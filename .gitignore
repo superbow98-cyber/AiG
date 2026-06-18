@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.env
+*.log
+data/*.DZT
+data/*.dt2
+data/*.sgy
+data/*.rd3
+__pycache__/
+*.pyc
