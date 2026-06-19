@@ -12,6 +12,9 @@ import {
   applyGain,
   bandpassFilter,
 } from '../utils/signalProcessing';
+import { pcaStep } from '../models/pcaModel';
+import { icaStep } from '../models/icaModel';
+import { autoencoderStep } from '../models/autoencoderModel';
 
 // ── step definitions ──────────────────────────────────────────────────────────
 // Each step has a name, a runner function, and default params.
@@ -47,6 +50,24 @@ export const STEP_DEFS = {
     defaultParams: { lowMHz: 200, highMHz: 800 },
     run: (matrix, params, meta) =>
       bandpassFilter(matrix, params.lowMHz, params.highMHz, meta?.dt_ns ?? 0.2),
+  },
+  pca: {
+    label: 'PCA Clutter Removal',
+    description: 'Removes top N principal components (coherent clutter). Slow if traces > 1500.',
+    defaultParams: { nComponents: 2 },
+    run: (matrix, params) => pcaStep(matrix, params),
+  },
+  ica: {
+    label: 'ICA Signal Separation',
+    description: 'Separates independent sources — suppresses Gaussian clutter ICs.',
+    defaultParams: { nComponents: 3 },
+    run: (matrix, params) => icaStep(matrix, params),
+  },
+  autoencoder: {
+    label: 'Autoencoder Clutter Removal',
+    description: 'Trains a neural autoencoder on traces; subtracts learnt clutter. Best after Background Removal.',
+    defaultParams: { epochs: 40, latentDim: 32, hiddenDim: 128 },
+    run: (matrix, params) => autoencoderStep(matrix, params),
   },
 };
 
