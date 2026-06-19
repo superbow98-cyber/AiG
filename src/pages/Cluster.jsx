@@ -1,5 +1,520 @@
-// AiG — Cluster Page
-// Anomaly clustering — group detected objects by signature similarity
-// AI: K-Means, DBSCAN, SOM
-// TODO: implement
-export default function Cluster() { return <div className="p-8 text-gray-500">Cluster — coming soon</div>; }
+// AiG — Cluster.jsx
+// Anomaly clustering — group detected objects by GPR signature similarity.
+// Runs K-Means or DBSCAN in-browser on 18-dim feature vectors, projected
+// to 2D via PCA for the scatter plot.
+//
+// Reads:  location.state { matrix, metadata, velocity, filename, scanId, detections }
+//         detections = ClassificationResults from Classify.jsx (or raw from Detect.jsx)
+// Passes: location.state + detections (with clusterLabel added) → /results
+//
+// Consumed by: App.jsx (route /cluster)
+
+import { useState, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
+import ObjectMap  from '../components/ObjectMap';
+import StatusBar  from '../components/StatusBar';
+
+// ── Colour palette for clusters ───────────────────────────────────────────────
+const CLUSTER_COLORS = [
+  '#34d399','#f87171','#fbbf24','#a78bfa',
+  '#38bdf8','#fb923c','#e879f9','#4ade80',
+  '#f472b6','#60a5fa',
+];
+const NOISE_COLOR = '#475569';
+
+function clusterColor(label) {
+  if (label === -1 || label == null) return NOISE_COLOR;
+  return CLUSTER_COLORS[label % CLUSTER_COLORS.length];
+}
+
+// ── Minimal PCA (2-component) ─────────────────────────────────────────────────
+function pca2D(vectors) {
+  if (!vectors.length) return [];
+  const dim = vectors[0].length;
+  const n   = vectors.length;
+
+  // Centre
+  const mean = new Float64Array(dim);
+  for (const v of vectors) for (let d = 0; d < dim; d++) mean[d] += v[d] / n;
+  const centred = vectors.map((v) => v.map((x, d) => x - mean[d]));
+
+  // Power iteration for top-2 eigenvectors
+  function powerIter(data, exclude = null) {
+    let vec = new Array(dim).fill(0).map((_, i) => (i === 0 ? 1 : Math.random() * 0.01));
+    for (let iter = 0; iter < 50; iter++) {
+      let next = new Array(dim).fill(0);
+      for (const row of data) {
+        let dot = row.reduce((s, x, i) => s + x * vec[i], 0);
+        if (exclude) dot -= exclude.reduce((s, x, i) => s + x * vec[i], 0)
+                              * exclude.reduce((s, x, i) => s + x * row[i], 0);
+        for (let i = 0; i < dim; i++) next[i] += row[i] * dot;
+      }
+      const norm = Math.sqrt(next.reduce((s, x) => s + x * x, 0)) || 1;
+      vec = next.map((x) => x / norm);
+    }
+    return vec;
+  }
+
+  const pc1 = powerIter(centred);
+  const pc2 = powerIter(centred, pc1);
+
+  return centred.map((v) => ({
+    x: v.reduce((s, x, i) => s + x * pc1[i], 0),
+    y: v.reduce((s, x, i) => s + x * pc2[i], 0),
+  }));
+}
+
+// ── K-Means ───────────────────────────────────────────────────────────────────
+function kMeans(vectors, k, maxIter = 100) {
+  if (vectors.length <= k) return vectors.map((_, i) => i);
+  const dim = vectors[0].length;
+
+  // Init centroids — pick k random distinct points
+  const indices = [...Array(vectors.length).keys()].sort(() => Math.random() - 0.5).slice(0, k);
+  let centroids = indices.map((i) => [...vectors[i]]);
+  let labels    = new Array(vectors.length).fill(0);
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    // Assign
+    const newLabels = vectors.map((v) => {
+      let best = 0, bestDist = Infinity;
+      for (let c = 0; c < k; c++) {
+        const d = centroids[c].reduce((s, x, i) => s + (x - v[i]) ** 2, 0);
+        if (d < bestDist) { bestDist = d; best = c; }
+      }
+      return best;
+    });
+
+    // Check convergence
+    if (newLabels.every((l, i) => l === labels[i])) break;
+    labels = newLabels;
+
+    // Update centroids
+    centroids = Array.from({ length: k }, (_, c) => {
+      const members = vectors.filter((_, i) => labels[i] === c);
+      if (!members.length) return centroids[c];
+      return Array.from({ length: dim }, (__, d) =>
+        members.reduce((s, v) => s + v[d], 0) / members.length
+      );
+    });
+  }
+  return labels;
+}
+
+// ── DBSCAN ────────────────────────────────────────────────────────────────────
+function dbscan(vectors, eps, minPts) {
+  const n      = vectors.length;
+  const labels = new Array(n).fill(-1); // -1 = noise
+  let   cluster = 0;
+
+  function dist(a, b) {
+    return Math.sqrt(a.reduce((s, x, i) => s + (x - b[i]) ** 2, 0));
+  }
+  function neighbours(idx) {
+    return vectors.reduce((acc, v, i) => {
+      if (dist(vectors[idx], v) <= eps) acc.push(i);
+      return acc;
+    }, []);
+  }
+
+  const visited = new Array(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    if (visited[i]) continue;
+    visited[i] = true;
+    const nb = neighbours(i);
+    if (nb.length < minPts) continue; // noise for now
+    labels[i] = cluster;
+    const queue = [...nb];
+    while (queue.length) {
+      const j = queue.shift();
+      if (!visited[j]) {
+        visited[j] = true;
+        const nb2 = neighbours(j);
+        if (nb2.length >= minPts) queue.push(...nb2);
+      }
+      if (labels[j] === -1) labels[j] = cluster;
+    }
+    cluster++;
+  }
+  return labels;
+}
+
+// ── Scatter plot ──────────────────────────────────────────────────────────────
+const PAD = 24;
+
+function ScatterPlot({ points, labels, detections, width = 400, height = 300 }) {
+  if (!points.length) return null;
+
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const xRange = xMax - xMin || 1;
+  const yRange = yMax - yMin || 1;
+
+  const toSvgX = (x) => PAD + ((x - xMin) / xRange) * (width  - PAD * 2);
+  const toSvgY = (y) => PAD + ((y - yMin) / yRange) * (height - PAD * 2);
+
+  return (
+    <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`}>
+      {/* Axes */}
+      <line x1={PAD} y1={height - PAD} x2={width - PAD} y2={height - PAD}
+            stroke="#374151" strokeWidth={1} />
+      <line x1={PAD} y1={PAD} x2={PAD} y2={height - PAD}
+            stroke="#374151" strokeWidth={1} />
+      <text x={width / 2} y={height - 4} textAnchor="middle"
+            fontSize={9} fill="#6b7280" fontFamily="monospace">PC1</text>
+      <text x={8} y={height / 2} textAnchor="middle" fontSize={9}
+            fill="#6b7280" fontFamily="monospace"
+            transform={`rotate(-90, 8, ${height / 2})`}>PC2</text>
+
+      {/* Points */}
+      {points.map((p, i) => {
+        const color = clusterColor(labels[i]);
+        const det   = detections[i];
+        return (
+          <g key={i}>
+            <circle
+              cx={toSvgX(p.x)} cy={toSvgY(p.y)}
+              r={5}
+              fill={color} fillOpacity={0.8}
+              stroke={color} strokeWidth={1}
+            >
+              <title>
+                {`Object ${i + 1} — cluster ${labels[i] === -1 ? 'noise' : labels[i]}\n`}
+                {det ? `${det.position_m?.toFixed(2)}m · ${det.depth_m?.toFixed(2)}m deep` : ''}
+              </title>
+            </circle>
+            <text
+              x={toSvgX(p.x)} y={toSvgY(p.y) - 7}
+              textAnchor="middle" fontSize={8}
+              fill={color} fontFamily="monospace"
+            >
+              {i + 1}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+const DEFAULT_OPTS = { k: 3, eps: 2.0, minPts: 2 };
+
+export default function Cluster() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state    = location.state;
+
+  const detections  = state?.detections ?? [];
+  const velocity    = state?.velocity   ?? 0.1;
+  const filename    = state?.filename   ?? 'scan';
+  const dx_m        = state?.metadata?.dx_m ?? 0.02;
+  const scanLengthM = (state?.metadata?.traces ?? 0) * dx_m;
+
+  const [algorithm, setAlgorithm] = useState('kmeans');
+  const [opts,      setOpts]      = useState(DEFAULT_OPTS);
+  const [labels,    setLabels]    = useState([]);
+  const [running,   setRunning]   = useState(false);
+  const [error,     setError]     = useState(null);
+
+  const setOpt = (k, v) => setOpts((o) => ({ ...o, [k]: v }));
+
+  // ── Feature vectors ────────────────────────────────────────────────────────
+  const vectors = useMemo(() =>
+    detections.map((d) => Array.from(d.features ?? [])).filter((v) => v.length > 0),
+    [detections]
+  );
+
+  // ── PCA projection ─────────────────────────────────────────────────────────
+  const projected = useMemo(() =>
+    vectors.length >= 2 ? pca2D(vectors) : [],
+    [vectors]
+  );
+
+  // ── Run clustering ─────────────────────────────────────────────────────────
+  const runClustering = useCallback(async () => {
+    if (!vectors.length) return;
+    setRunning(true);
+    setError(null);
+    await new Promise((r) => setTimeout(r, 0));
+    try {
+      let newLabels;
+      if (algorithm === 'kmeans') {
+        const k = Math.min(opts.k, vectors.length);
+        newLabels = kMeans(vectors, k);
+      } else {
+        newLabels = dbscan(vectors, opts.eps, opts.minPts);
+      }
+      setLabels(newLabels);
+    } catch (e) {
+      setError(e.message ?? 'Clustering failed');
+    } finally {
+      setRunning(false);
+    }
+  }, [vectors, algorithm, opts]);
+
+  // ── Detections with cluster labels for ObjectMap ───────────────────────────
+  const labelledDetections = useMemo(() =>
+    detections.map((d, i) => ({
+      ...d,
+      material: labels[i] != null && labels[i] !== -1
+        ? `cluster-${labels[i]}`
+        : (labels[i] === -1 ? 'noise' : (d.material ?? d.label ?? 'unknown')),
+      label: labels[i] != null && labels[i] !== -1
+        ? `cluster-${labels[i]}`
+        : (labels[i] === -1 ? 'noise' : (d.material ?? d.label ?? 'unknown')),
+    })),
+    [detections, labels]
+  );
+
+  // ── Cluster summary ────────────────────────────────────────────────────────
+  const clusterSummary = useMemo(() => {
+    if (!labels.length) return [];
+    const map = {};
+    labels.forEach((l, i) => {
+      const key = l === -1 ? 'noise' : `Cluster ${l}`;
+      if (!map[key]) map[key] = { count: 0, label: l, indices: [] };
+      map[key].count++;
+      map[key].indices.push(i);
+    });
+    return Object.entries(map).sort((a, b) => {
+      if (a[1].label === -1) return 1;
+      if (b[1].label === -1) return -1;
+      return a[1].label - b[1].label;
+    });
+  }, [labels]);
+
+  // ── Proceed ────────────────────────────────────────────────────────────────
+  const goResults = () => navigate('/results', {
+    state: { ...state, detections: labelledDetections },
+  });
+
+  // ── Guard ──────────────────────────────────────────────────────────────────
+  if (!detections.length) {
+    return (
+      <div className="p-8 text-center space-y-3">
+        <p className="text-gray-400">No detections to cluster.</p>
+        <Link to="/detect" className="text-emerald-400 hover:underline text-sm">
+          ← Back to Detect
+        </Link>
+      </div>
+    );
+  }
+
+  const nClusters = labels.length
+    ? new Set(labels.filter((l) => l !== -1)).size
+    : 0;
+  const nNoise = labels.filter((l) => l === -1).length;
+
+  return (
+    <div className="p-6 space-y-6">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-white">Cluster Analysis</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {filename} · {detections.length} objects · {vectors.length} with feature vectors
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={runClustering}
+            disabled={running || !vectors.length}
+            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-600
+                       text-white text-sm font-semibold rounded-lg transition-colors"
+          >
+            {running ? 'Clustering…' : 'Run Clustering'}
+          </button>
+          {labels.length > 0 && (
+            <button
+              onClick={goResults}
+              className="px-4 py-2 bg-violet-600 hover:bg-violet-500
+                         text-white text-sm font-semibold rounded-lg transition-colors"
+            >
+              View Results →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-900/40 border border-red-700 rounded-lg px-4 py-3
+                        text-red-300 text-sm">{error}</div>
+      )}
+
+      {/* Algorithm + options */}
+      <div className="bg-gray-800 border border-gray-700 rounded-xl px-5 py-4 space-y-4">
+
+        {/* Algorithm toggle */}
+        <div className="flex gap-2">
+          {[
+            { value: 'kmeans', label: 'K-Means' },
+            { value: 'dbscan', label: 'DBSCAN' },
+          ].map((a) => (
+            <button
+              key={a.value}
+              onClick={() => setAlgorithm(a.value)}
+              className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-colors
+                ${algorithm === a.value
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-gray-700 text-gray-400 hover:text-white'}`}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+
+        {/* K-Means options */}
+        {algorithm === 'kmeans' && (
+          <div>
+            <label className="text-xs text-gray-400 block mb-1">
+              Clusters (k): <span className="text-white font-mono">{opts.k}</span>
+            </label>
+            <input
+              type="range" min={2} max={Math.min(10, detections.length)} step={1}
+              value={opts.k}
+              onChange={(e) => setOpt('k', Number(e.target.value))}
+              className="w-64 accent-emerald-400"
+            />
+          </div>
+        )}
+
+        {/* DBSCAN options */}
+        {algorithm === 'dbscan' && (
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">
+                Epsilon (ε): <span className="text-white font-mono">{opts.eps.toFixed(1)}</span>
+              </label>
+              <input
+                type="range" min={0.5} max={10} step={0.5}
+                value={opts.eps}
+                onChange={(e) => setOpt('eps', Number(e.target.value))}
+                className="w-full accent-emerald-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">
+                Min points: <span className="text-white font-mono">{opts.minPts}</span>
+              </label>
+              <input
+                type="range" min={1} max={Math.max(1, Math.floor(detections.length / 2))} step={1}
+                value={opts.minPts}
+                onChange={(e) => setOpt('minPts', Number(e.target.value))}
+                className="w-full accent-emerald-400"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Stats row */}
+      {labels.length > 0 && (
+        <div className="grid grid-cols-3 gap-4">
+          {[
+            { label: 'Clusters found', value: nClusters },
+            { label: 'Noise points',   value: nNoise },
+            { label: 'Objects clustered', value: detections.length - nNoise },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
+              <p className="text-xs text-gray-500 mb-1">{label}</p>
+              <p className="text-2xl font-bold text-emerald-400">{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* PCA scatter plot */}
+      <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-gray-300 mb-4">
+          Feature Space (PCA 2D projection)
+        </h2>
+        {projected.length >= 2 ? (
+          <>
+            <ScatterPlot
+              points={projected}
+              labels={labels.length ? labels : new Array(detections.length).fill(null)}
+              detections={detections}
+              width={700}
+              height={320}
+            />
+            {/* Cluster legend */}
+            {clusterSummary.length > 0 && (
+              <div className="flex flex-wrap gap-3 mt-3">
+                {clusterSummary.map(([name, { label: l, count }]) => (
+                  <div key={name} className="flex items-center gap-1.5">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: clusterColor(l) }}
+                    />
+                    <span className="text-xs text-gray-400">
+                      {name} ({count})
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-gray-500 text-center py-8">
+            {vectors.length < 2
+              ? 'Need at least 2 objects with feature vectors to project.'
+              : 'Run clustering to see projection.'}
+          </p>
+        )}
+      </div>
+
+      {/* Object map with cluster colours */}
+      <ObjectMap
+        detections={labels.length ? labelledDetections : detections}
+        scanLengthM={scanLengthM}
+        velocity={velocity}
+      />
+
+      {/* Cluster breakdown table */}
+      {clusterSummary.length > 0 && (
+        <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-700">
+            <h2 className="text-sm font-semibold text-gray-300">Cluster Summary</h2>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-900 text-gray-400 text-xs uppercase tracking-wide">
+              <tr>
+                {['Cluster', 'Objects', 'Avg Depth', 'Avg Position'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {clusterSummary.map(([name, { label: l, indices }]) => {
+                const members = indices.map((i) => detections[i]);
+                const avgDepth = members.reduce((s, d) => s + (d.depth_m ?? 0), 0) / members.length;
+                const avgPos   = members.reduce((s, d) => s + (d.position_m ?? 0), 0) / members.length;
+                return (
+                  <tr key={name} className="hover:bg-gray-700/40 transition-colors">
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full"
+                          style={{ backgroundColor: clusterColor(l) }}
+                        />
+                        <span className="text-white font-medium">{name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-gray-300 font-mono">{indices.length}</td>
+                    <td className="px-4 py-2 text-gray-300 font-mono">{avgDepth.toFixed(2)}m</td>
+                    <td className="px-4 py-2 text-gray-300 font-mono">{avgPos.toFixed(2)}m</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
