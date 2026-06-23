@@ -1,65 +1,37 @@
-// AiG — Upload.jsx
-// Upload page — FileLoader + Supabase save + navigate to /preprocess.
-// useGPRData is instantiated here and passed down; it should eventually live
-// in a GPRContext so Preprocess/Visualise/Detect can all share the same scan.
-// For now it lives here and is threaded via route state as a short-term bridge
-// until GPRContext is wired in (Layer 3 follow-up task noted in BRAIN §7).
-
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useGPRData } from '../hooks/useGPRData';
-import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabase';
-import FileLoader from '../components/FileLoader';
-import StatusBar from '../components/StatusBar';
-import { ArrowRight, Database } from 'lucide-react';
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
+import FileLoader from '../components/FileLoader'
+import useGPRData from '../hooks/useGPRData'
 
 export default function Upload() {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { scan, setScan, loadDemo, clearScan, getDxM } = useGPRData();
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { scan, setScan, loadDemo } = useGPRData()
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const [savedId, setSavedId] = useState(null)
 
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-  const [savedId, setSavedId] = useState(null);
+  async function handleSaveToDb() {
+    if (!scan.matrix || !scan.metadata) return
+    setSaving(true)
+    setSaveError(null)
+    const { data, error } = await supabase.from('gpr_scans').insert({
+      user_id: user.id,
+      filename: scan.filename,
+      format: scan.format,
+      traces: scan.metadata.traces,
+      samples: scan.metadata.samples,
+      dt_ns: scan.metadata.dt_ns,
+      dx_m: scan.metadata.dx_m ?? 0.02,
+    }).select('id').single()
+    setSaving(false)
+    if (error) { setSaveError(error.message); return }
+    setSavedId(data.id)
+  }
 
-  // Reset save state when a new file is loaded
-  useEffect(() => {
-    setSavedId(null);
-    setSaveError(null);
-  }, [scan.filename]);
-
-  // ── save scan record to Supabase ──────────────────────────────────────────
-  const saveScan = async () => {
-    if (!scan.matrix || !user) return;
-    setSaving(true);
-    setSaveError(null);
-
-    const { data, error } = await supabase
-      .from('gpr_scans')
-      .insert({
-        user_id: user.id,
-        filename: scan.filename,
-        format: scan.format,
-        traces: scan.metadata?.traces ?? null,
-        samples: scan.metadata?.samples ?? null,
-        dt_ns: scan.metadata?.dt_ns ?? null,
-        dx_m: getDxM(),
-      })
-      .select('id')
-      .single();
-
-    if (error) {
-      setSaveError(error.message);
-    } else {
-      setSavedId(data.id);
-    }
-    setSaving(false);
-  };
-
-  // ── proceed to preprocess ─────────────────────────────────────────────────
-  const proceed = () => {
-    // Pass scan via location state as temporary bridge (replace with GPRContext later)
+  function handleProceed() {
     navigate('/preprocess', {
       state: {
         matrix: scan.matrix,
@@ -67,94 +39,131 @@ export default function Upload() {
         filename: scan.filename,
         format: scan.format,
         velocity: scan.velocity,
-        scanId: savedId,
-      },
-    });
-  };
+        scanId: savedId ?? null,
+      }
+    })
+  }
 
-  const loaded = !!scan.filename && !scan.loading;
+  const meta = scan.metadata
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Upload GPR Scan</h1>
-        <p className="mt-1 text-sm text-gray-400">
-          Supported formats: GSSI .DZT · Mala .dt2/.rd3 · SEG-Y .sgy · .csv
+    <div className="min-h-full p-6" style={{ background: '#FDFBF0' }}>
+      {/* Page header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-stone-800">Upload GPR Scan</h1>
+        <p className="text-stone-500 text-sm mt-1">
+          Supported formats: .DZT, .dt2/.rd3 (Mala), .sgy, .csv
         </p>
       </div>
 
-      {/* File loader */}
-      <div className="rounded-xl border border-gray-700 bg-gray-800 p-6">
-        <FileLoader
-          scan={scan}
-          setScan={setScan}
-          loadDemo={loadDemo}
-          onScanLoaded={() => { setSavedId(null); setSaveError(null); }}
-        />
+      {/* File loader card */}
+      <div
+        className="rounded-2xl p-6 mb-6 border"
+        style={{ background: '#F7F3D0', borderColor: '#F0E9B8' }}
+      >
+        <FileLoader setScan={setScan} loadDemo={loadDemo} scan={scan} />
       </div>
 
-      {/* Parse progress */}
-      {scan.loading && (
-        <StatusBar step="Parsing GPR file…" progress={50} visible />
-      )}
-
-      {/* Scan metadata summary */}
-      {loaded && scan.metadata && (
-        <div className="rounded-xl border border-gray-700 bg-gray-800 p-6 space-y-4">
-          <h2 className="text-sm font-medium text-gray-300 uppercase tracking-widest">
-            Scan Info
-          </h2>
-          <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm sm:grid-cols-3">
+      {/* Metadata summary */}
+      {meta && (
+        <div
+          className="rounded-2xl p-6 mb-6 border"
+          style={{ background: '#F7F3D0', borderColor: '#F0E9B8' }}
+        >
+          <h2 className="text-base font-semibold text-stone-700 mb-4">Scan Metadata</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              ['Filename', scan.filename],
-              ['Format', scan.format?.toUpperCase()],
-              ['Traces', scan.metadata.traces?.toLocaleString()],
-              ['Samples / trace', scan.metadata.samples?.toLocaleString()],
-              ['Time step (dt)', scan.metadata.dt_ns != null ? `${scan.metadata.dt_ns} ns` : '—'],
-              ['Trace spacing', `${getDxM()} m${scan.metadata.dx_m == null ? ' (default)' : ''}`],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-gray-500">{label}</dt>
-                <dd className="text-white font-medium">{value ?? '—'}</dd>
+              { label: 'Traces', value: meta.traces?.toLocaleString() ?? '—' },
+              { label: 'Samples', value: meta.samples?.toLocaleString() ?? '—' },
+              { label: 'Time step (dt)', value: meta.dt_ns != null ? `${meta.dt_ns} ns` : '—' },
+              { label: 'Trace spacing', value: meta.dx_m != null ? `${meta.dx_m} m` : '—' },
+            ].map(({ label, value }) => (
+              <div
+                key={label}
+                className="rounded-xl p-4 text-center border"
+                style={{ background: '#FDFBF0', borderColor: '#E8DFA0' }}
+              >
+                <div className="text-xs text-stone-500 mb-1">{label}</div>
+                <div className="text-lg font-bold text-stone-800">{value}</div>
               </div>
             ))}
-          </dl>
+          </div>
+
+          {/* Format badge */}
+          <div className="mt-4 flex items-center gap-2">
+            <span className="text-xs text-stone-500">Format:</span>
+            <span
+              className="text-xs font-semibold px-2 py-0.5 rounded-full border"
+              style={{ color: '#C9971A', borderColor: '#C9971A', background: '#FDFBF0' }}
+            >
+              {scan.format?.toUpperCase() ?? '—'}
+            </span>
+            <span className="text-xs text-stone-500 ml-2 truncate max-w-xs">{scan.filename}</span>
+          </div>
         </div>
       )}
 
-      {/* Save + proceed */}
-      {loaded && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Save error */}
+      {saveError && (
+        <div className="mb-4 rounded-xl p-3 border border-red-200 bg-red-50 text-red-700 text-sm">
+          {saveError}
+        </div>
+      )}
+
+      {/* Action row */}
+      {scan.matrix && (
+        <div className="flex flex-wrap items-center gap-3">
           {/* Save to DB */}
-          <div className="flex items-center gap-3">
-            {!savedId ? (
-              <button
-                onClick={saveScan}
-                disabled={saving}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-800 px-4 py-2 text-sm text-gray-300 hover:border-gray-500 hover:text-white disabled:opacity-50"
-              >
-                <Database className="h-4 w-4" />
-                {saving ? 'Saving…' : 'Save to database'}
-              </button>
-            ) : (
-              <p className="text-sm text-emerald-400">✓ Saved to database</p>
-            )}
-            {saveError && (
-              <p className="text-sm text-red-400">{saveError}</p>
-            )}
-          </div>
+          {!savedId ? (
+            <button
+              onClick={handleSaveToDb}
+              disabled={saving}
+              className="px-5 py-2.5 rounded-xl text-sm font-medium border transition-colors disabled:opacity-50"
+              style={{
+                borderColor: '#C9971A',
+                color: '#C9971A',
+                background: '#FDFBF0',
+              }}
+            >
+              {saving ? 'Saving…' : 'Save to Database'}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium"
+              style={{ borderColor: '#E8DFA0', background: '#F7F3D0', color: '#92692A' }}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Saved to Database
+            </div>
+          )}
 
           {/* Proceed */}
           <button
-            onClick={proceed}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-400 transition-colors"
+            onClick={handleProceed}
+            className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
+            style={{ background: '#C9971A' }}
           >
-            Proceed to Preprocess
-            <ArrowRight className="h-4 w-4" />
+            Proceed to Preprocess →
+          </button>
+
+          {/* Skip */}
+          <button
+            onClick={() => navigate('/visualise', {
+              state: {
+                matrix: scan.matrix,
+                metadata: scan.metadata,
+                filename: scan.filename,
+                format: scan.format,
+                velocity: scan.velocity,
+                scanId: savedId ?? null,
+              }
+            })}
+            className="px-4 py-2.5 rounded-xl text-sm font-medium text-stone-500 hover:text-stone-700 transition-colors"
+          >
+            Skip to Visualise
           </button>
         </div>
       )}
     </div>
-  );
+  )
 }
