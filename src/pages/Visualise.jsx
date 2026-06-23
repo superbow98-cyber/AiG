@@ -1,156 +1,189 @@
-// AiG — Visualise.jsx
-// B-scan viewer page — colormap selector, amplitude range, trace zoom strip.
-// Receives scan via router location.state (Upload.jsx passes it).
-// TODO: replace location.state bridge with GPRContext when ready (BRAIN §7).
-
-import { useState, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import BScanViewer from '../components/BScanViewer';
-import DepthScale from '../components/DepthScale';
-import { getColormapNames, getMatrixRange } from '../utils/colormap';
-import { DEFAULT_VELOCITY_M_PER_NS } from '../utils/depthCalc';
-import { ArrowRight, Info } from 'lucide-react';
-
-const VIEWER_HEIGHT = 480;
+import { useState } from 'react'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
+import BScanViewer from '../components/BScanViewer'
+import DepthScale from '../components/DepthScale'
+import { getColormapNames, getMatrixRange } from '../utils/colormap'
 
 export default function Visualise() {
-  const { state } = useLocation();
-  const navigate = useNavigate();
+  const { state } = useLocation()
+  const navigate = useNavigate()
 
-  const matrix   = state?.matrix   ?? null;
-  const metadata = state?.metadata ?? null;
-  const filename = state?.filename ?? null;
-  const velocity = state?.velocity ?? DEFAULT_VELOCITY_M_PER_NS;
-
-  // ── colormap controls ─────────────────────────────────────────────────────
-  const [colormap, setColormap] = useState('seismic');
-
-  // Amplitude range — default to actual data range
-  const dataRange = useMemo(() => matrix ? getMatrixRange(matrix) : { min: 0, max: 1 }, [matrix]);
-  const [minVal, setMinVal] = useState(null); // null = use dataRange
-  const [maxVal, setMaxVal] = useState(null);
-
-  const effectiveMin = minVal ?? dataRange.min;
-  const effectiveMax = maxVal ?? dataRange.max;
-
-  // ── hover info ────────────────────────────────────────────────────────────
-  const [hoverInfo, setHoverInfo] = useState(null);
-
-  // ── no scan guard ─────────────────────────────────────────────────────────
-  if (!matrix) {
+  if (!state?.matrix) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-24 text-gray-400">
-        <Info className="h-8 w-8" />
-        <p>No scan loaded. <a href="/upload" className="text-emerald-400 underline">Upload a file first.</a></p>
+      <div className="min-h-full flex items-center justify-center" style={{ background: '#FDFBF0' }}>
+        <div className="text-center">
+          <p className="text-stone-500 mb-4">No scan loaded.</p>
+          <Link to="/upload" className="text-sm font-medium" style={{ color: '#C9971A' }}>
+            ← Go to Upload
+          </Link>
+        </div>
       </div>
-    );
+    )
   }
 
-  const samples = metadata?.samples ?? matrix.length;
-  const dt_ns   = metadata?.dt_ns   ?? 0.2;
-  const traces  = metadata?.traces  ?? (matrix[0]?.length ?? 0);
+  const { matrix, metadata, filename, format, velocity, scanId, preprocessed, preprocessSteps } = state
+
+  const [colormap, setColormap] = useState('seismic')
+  const [hoverInfo, setHoverInfo] = useState(null)
+
+  const { min: defaultMin, max: defaultMax } = getMatrixRange(matrix)
+  const [minVal, setMinVal] = useState(defaultMin)
+  const [maxVal, setMaxVal] = useState(defaultMax)
+
+  const colormapNames = getColormapNames()
+
+  function handleRunDetection() {
+    navigate('/detect', { state })
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full p-6 flex flex-col" style={{ background: '#FDFBF0' }}>
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="mb-5 flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Visualise</h1>
-          {filename && <p className="mt-0.5 text-sm text-gray-400">{filename}</p>}
+          <h1 className="text-2xl font-bold text-stone-800">Visualise B-scan</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-stone-500 text-sm truncate max-w-xs">{filename ?? 'Untitled'}</span>
+            {preprocessed && (
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded-full border"
+                style={{ color: '#C9971A', borderColor: '#C9971A', background: '#FDFBF0' }}
+              >
+                Preprocessed
+              </span>
+            )}
+          </div>
+          {preprocessed && preprocessSteps?.length > 0 && (
+            <p className="text-xs text-stone-400 mt-0.5">
+              Steps: {preprocessSteps.join(' → ')}
+            </p>
+          )}
         </div>
         <button
-          onClick={() => navigate('/detect', { state })}
-          className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-400"
+          onClick={handleRunDetection}
+          className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white"
+          style={{ background: '#C9971A' }}
         >
-          Run Detection <ArrowRight className="h-4 w-4" />
+          Run Detection →
         </button>
       </div>
 
-      {/* Controls */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Controls bar */}
+      <div
+        className="rounded-2xl border p-4 mb-5 flex flex-wrap items-center gap-6"
+        style={{ background: '#F7F3D0', borderColor: '#F0E9B8' }}
+      >
         {/* Colormap */}
-        <div className="rounded-xl border border-gray-700 bg-gray-800 p-4 space-y-2">
-          <label className="text-xs font-medium uppercase tracking-widest text-gray-400">Colormap</label>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-stone-600 whitespace-nowrap">Colormap</label>
           <select
             value={colormap}
-            onChange={(e) => setColormap(e.target.value)}
-            className="w-full rounded-md bg-gray-700 px-3 py-1.5 text-sm text-white border border-gray-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            onChange={e => setColormap(e.target.value)}
+            className="text-sm rounded-lg border px-2 py-1.5 text-stone-700 focus:outline-none"
+            style={{ borderColor: '#E8DFA0', background: '#FDFBF0' }}
           >
-            {getColormapNames().map((name) => (
-              <option key={name} value={name}>{name}</option>
+            {colormapNames.map(c => (
+              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
             ))}
           </select>
         </div>
 
-        {/* Amplitude min */}
-        <div className="rounded-xl border border-gray-700 bg-gray-800 p-4 space-y-2">
-          <label className="text-xs font-medium uppercase tracking-widest text-gray-400">
-            Min amplitude <span className="text-gray-500 normal-case">({dataRange.min.toFixed(1)})</span>
-          </label>
+        {/* Min amplitude */}
+        <div className="flex items-center gap-2 flex-1 min-w-36">
+          <label className="text-xs font-medium text-stone-600 whitespace-nowrap">Min amp</label>
           <input
             type="range"
-            min={dataRange.min}
-            max={dataRange.max}
-            step={(dataRange.max - dataRange.min) / 200}
-            value={effectiveMin}
-            onChange={(e) => setMinVal(parseFloat(e.target.value))}
-            className="w-full accent-emerald-400"
+            min={defaultMin}
+            max={defaultMax}
+            step={(defaultMax - defaultMin) / 200}
+            value={minVal}
+            onChange={e => setMinVal(Number(e.target.value))}
+            className="flex-1 accent-amber-500"
           />
-          <p className="text-right text-xs tabular-nums text-gray-400">{effectiveMin.toFixed(2)}</p>
+          <span className="text-xs text-stone-500 w-12 text-right">{minVal.toFixed(1)}</span>
         </div>
 
-        {/* Amplitude max */}
-        <div className="rounded-xl border border-gray-700 bg-gray-800 p-4 space-y-2">
-          <label className="text-xs font-medium uppercase tracking-widest text-gray-400">
-            Max amplitude <span className="text-gray-500 normal-case">({dataRange.max.toFixed(1)})</span>
-          </label>
+        {/* Max amplitude */}
+        <div className="flex items-center gap-2 flex-1 min-w-36">
+          <label className="text-xs font-medium text-stone-600 whitespace-nowrap">Max amp</label>
           <input
             type="range"
-            min={dataRange.min}
-            max={dataRange.max}
-            step={(dataRange.max - dataRange.min) / 200}
-            value={effectiveMax}
-            onChange={(e) => setMaxVal(parseFloat(e.target.value))}
-            className="w-full accent-emerald-400"
+            min={defaultMin}
+            max={defaultMax}
+            step={(defaultMax - defaultMin) / 200}
+            value={maxVal}
+            onChange={e => setMaxVal(Number(e.target.value))}
+            className="flex-1 accent-amber-500"
           />
-          <p className="text-right text-xs tabular-nums text-gray-400">{effectiveMax.toFixed(2)}</p>
+          <span className="text-xs text-stone-500 w-12 text-right">{maxVal.toFixed(1)}</span>
         </div>
+
+        {/* Reset range */}
+        <button
+          onClick={() => { setMinVal(defaultMin); setMaxVal(defaultMax) }}
+          className="text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+          style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#FDFBF0' }}
+        >
+          Reset
+        </button>
       </div>
 
-      {/* Scan stats */}
-      <div className="flex flex-wrap gap-6 text-xs text-gray-500">
-        <span>{traces} traces</span>
-        <span>{samples} samples/trace</span>
-        <span>{dt_ns} ns/sample</span>
-        <span>velocity {velocity} m/ns</span>
-        {hoverInfo && (
-          <span className="text-emerald-400">
-            trace {hoverInfo.trace} · sample {hoverInfo.sample} · {hoverInfo.depth_m.toFixed(3)} m · amp {hoverInfo.amplitude?.toFixed(2)}
-          </span>
+      {/* Hover info bar */}
+      <div
+        className="rounded-xl border px-4 py-2 mb-4 flex flex-wrap gap-6 text-xs font-mono"
+        style={{
+          background: '#F7F3D0',
+          borderColor: '#F0E9B8',
+          minHeight: 36,
+          color: hoverInfo ? '#44403C' : '#A8A29E',
+        }}
+      >
+        {hoverInfo ? (
+          <>
+            <span>Trace: <strong>{hoverInfo.trace}</strong></span>
+            <span>Sample: <strong>{hoverInfo.sample}</strong></span>
+            <span>Depth: <strong>{hoverInfo.depth_m.toFixed(3)} m</strong></span>
+            <span>Amplitude: <strong>{hoverInfo.amplitude.toFixed(4)}</strong></span>
+          </>
+        ) : (
+          <span>Hover over the B-scan to inspect values</span>
         )}
       </div>
 
-      {/* Viewer */}
-      <div className="flex gap-0">
-        <DepthScale
-          samples={samples}
-          dt_ns={dt_ns}
-          velocity={velocity}
-          height_px={VIEWER_HEIGHT}
-        />
-        <div className="flex-1 min-w-0">
-          <BScanViewer
-            matrix={matrix}
-            colormap={colormap}
-            minVal={effectiveMin}
-            maxVal={effectiveMax}
-            height={VIEWER_HEIGHT}
-            velocity={velocity}
-            dt_ns={dt_ns}
-            onPixelHover={setHoverInfo}
+      {/* B-scan viewer */}
+      <div
+        className="flex-1 rounded-2xl border overflow-hidden"
+        style={{ background: '#F7F3D0', borderColor: '#F0E9B8', minHeight: 400 }}
+      >
+        <div className="flex h-full" style={{ minHeight: 400 }}>
+          <DepthScale
+            samples={metadata.samples}
+            dt_ns={metadata.dt_ns}
+            velocity={velocity ?? 0.1}
+            height_px={480}
           />
+          <div className="flex-1 min-w-0">
+            <BScanViewer
+              matrix={matrix}
+              colormap={colormap}
+              minVal={minVal}
+              maxVal={maxVal}
+              height={480}
+              velocity={velocity ?? 0.1}
+              dt_ns={metadata.dt_ns}
+              onPixelHover={setHoverInfo}
+            />
+          </div>
         </div>
       </div>
+
+      {/* Scan info footer */}
+      <div className="mt-4 flex flex-wrap gap-4 text-xs text-stone-500">
+        <span>{metadata.traces} traces × {metadata.samples} samples</span>
+        <span>dt = {metadata.dt_ns} ns</span>
+        <span>v = {(velocity ?? 0.1).toFixed(3)} m/ns</span>
+        <span>Format: {format?.toUpperCase()}</span>
+      </div>
     </div>
-  );
+  )
 }
