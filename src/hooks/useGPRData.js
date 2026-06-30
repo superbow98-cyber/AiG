@@ -115,3 +115,6 @@ export function useGPRData() {
     getDxM,
   };
 }
+
+// Default export alias — some pages import this hook as a default.
+export default useGPRData;

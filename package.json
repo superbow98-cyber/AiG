@@ -1,7 +1,7 @@
 {
   "name": "aig-ai-gpr",
   "version": "0.1.0",
-  "description": "AI-GPR tool for non-destructive subsurface object identification — position, size, depth, and material prediction",
+  "description": "AI-GPR tool for non-destructive subsurface object identification",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2",
+    "lucide-react": "^0.379.0",
+    "papaparse": "^5.4.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0"

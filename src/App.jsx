@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import Layout from './components/Layout'
 
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
@@ -13,6 +14,7 @@ import Cluster from './pages/Cluster'
 import Database from './pages/Database'
 import Results from './pages/Results'
 import Settings from './pages/Settings'
+import Validate from './pages/Validate'
 
 export default function App() {
   return (
@@ -22,18 +24,21 @@ export default function App() {
           {/* Public */}
           <Route path="/" element={<Home />} />
 
-          {/* Protected — all require login */}
+          {/* Protected — all require login (Google or Guest) and share the app shell */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard"  element={<Dashboard />} />
-            <Route path="/upload"     element={<Upload />} />
-            <Route path="/preprocess" element={<Preprocess />} />
-            <Route path="/visualise"  element={<Visualise />} />
-            <Route path="/detect"     element={<Detect />} />
-            <Route path="/classify"   element={<Classify />} />
-            <Route path="/cluster"    element={<Cluster />} />
-            <Route path="/database"   element={<Database />} />
-            <Route path="/results"    element={<Results />} />
-            <Route path="/settings"   element={<Settings />} />
+            <Route element={<Layout />}>
+              <Route path="/dashboard"  element={<Dashboard />} />
+              <Route path="/upload"     element={<Upload />} />
+              <Route path="/preprocess" element={<Preprocess />} />
+              <Route path="/visualise"  element={<Visualise />} />
+              <Route path="/detect"     element={<Detect />} />
+              <Route path="/classify"   element={<Classify />} />
+              <Route path="/cluster"    element={<Cluster />} />
+              <Route path="/database"   element={<Database />} />
+              <Route path="/results"    element={<Results />} />
+              <Route path="/validate"   element={<Validate />} />
+              <Route path="/settings"   element={<Settings />} />
+            </Route>
           </Route>
         </Routes>
       </AuthProvider>

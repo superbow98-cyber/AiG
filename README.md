@@ -4,6 +4,40 @@
 
 ---
 
+## Quick Start
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure Supabase (for Google login + cloud database)
+cp .env.example .env
+#   then edit .env and paste your project's:
+#     VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+#     VITE_SUPABASE_ANON_KEY=your-anon-key-here
+
+# 3. Run the dev server
+npm run dev          # http://localhost:5173
+
+# 4. Production build
+npm run build && npm run preview
+```
+
+### Signing in
+
+AiG offers two ways in, so researchers can start instantly:
+
+- **Sign in with Google** — full experience, scans and GPR+XRF records are saved to your Supabase cloud database.
+- **Continue as guest** — explore the entire analysis pipeline (Upload → Preprocess → Visualise → Detect → Classify → Cluster) with no setup. Cloud-save features are disabled in guest mode.
+
+> The app boots even without a `.env` file — only the cloud features are disabled until Supabase is configured.
+
+### Supabase setup
+
+Create the database tables by running the SQL in [`docs/DATABASE_SCHEMA.md`](docs/DATABASE_SCHEMA.md) in your Supabase SQL editor, then enable the **Google** provider under *Authentication → Providers* and add `http://localhost:5173/dashboard` to the allowed redirect URLs.
+
+---
+
 ## The Problem
 
 Ground Penetrating Radar (GPR) can detect buried objects and anomalies — but it cannot tell you **what material** the object is made of. Currently, the only way to identify material composition is through physical excavation followed by laboratory XRF analysis. Excavation is irreversible, destructive to archaeological context, and expensive.
@@ -206,9 +240,9 @@ AiG/
 
 ### Phase 1 — Foundation *(current)*
 - [x] Repo structure
-- [ ] Google login (Supabase)
-- [ ] GPR file upload (.DZT, .dt2, .sgy)
-- [ ] B-scan visualisation
+- [x] Google login (Supabase) + Guest demo mode
+- [x] GPR file upload (.DZT, .dt2/.rd3, .sgy, .csv) + synthetic demo
+- [x] B-scan visualisation
 
 ### Phase 2 — Classical ML
 - [ ] Preprocessing (PCA, ICA, background removal)
@@ -228,6 +262,19 @@ AiG/
 - [ ] Confidence scoring
 - [ ] PDF export
 
+
+---
+
+## Research Alignment (GPR + XRF + AI unified framework)
+
+AiG mirrors the 4-stage PhD framework so the app doubles as a living methodology figure:
+
+- **Stage 1 · Survey** — Upload → Preprocess → Visualise → Detect (position, depth, size). Tuned for tropical high-moisture soil via strong denoising (Background removal, PCA, ICA, Autoencoder).
+- **Stage 2 · Predict** *(core novelty)* — Classify matches the GPR signature against the historical GPR+XRF database (k-NN) and predicts material **and a weighted elemental profile** (Fe/Ca/Si…) — before excavation.
+- **Stage 3–4 · Confirm & Map** — Results report with an **Excavation Priority** ranking (confidence × size × accessibility) to decide what to dig first; Database stores the GPR+XRF reference records.
+- **Stage 5 · Validation** — a metrics page answering **RQ4**: accuracy, confusion matrix, per-material precision/recall/F1, and confidence calibration (predicted vs pXRF ground truth). Includes a demo evaluation so it is useful before real data exists.
+
+Settings includes a **Malaysia tropical (high-moisture)** soil preset and attenuation guidance.
 
 ---
 

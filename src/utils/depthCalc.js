@@ -14,6 +14,7 @@ export const SOIL_VELOCITY_PRESETS = {
   dry_soil: 0.1,
   moist_soil: 0.08,
   wet_clay: 0.06,
+  tropical_wet: 0.055,   // Malaysia tropical high-moisture soil — strong attenuation
   concrete: 0.1,
   ice: 0.16,
 };

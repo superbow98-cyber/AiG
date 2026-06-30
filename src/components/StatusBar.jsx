@@ -13,12 +13,12 @@ export default function StatusBar({ step = '', progress = 0, visible = true }) {
   return (
     <div className="w-full space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">{step}</span>
-        <span className="text-xs tabular-nums text-gray-500">{Math.round(pct)}%</span>
+        <span className="text-xs text-stone-500">{step}</span>
+        <span className="text-xs tabular-nums text-stone-400">{Math.round(pct)}%</span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-700">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#F7F3D0]">
         <div
-          className="h-full rounded-full bg-emerald-400 transition-all duration-200"
+          className="h-full rounded-full bg-[#C9971A] transition-all duration-200"
           style={{ width: `${pct}%` }}
         />
       </div>

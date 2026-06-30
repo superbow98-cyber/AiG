@@ -9,3 +9,4 @@ data/*.sgy
 data/*.rd3
 __pycache__/
 *.pyc
+.DS_Store

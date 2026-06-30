@@ -223,8 +223,8 @@ export default function Cluster() {
   if (!detections.length) {
     return (
       <div className="p-8 text-center space-y-3">
-        <p className="text-gray-400">No detections to cluster.</p>
-        <Link to="/detect" className="text-emerald-400 hover:underline text-sm">
+        <p className="text-stone-500">No detections to cluster.</p>
+        <Link to="/detect" className="text-[#C9971A] hover:underline text-sm">
           ← Back to Detect
         </Link>
       </div>
@@ -240,8 +240,8 @@ export default function Cluster() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Cluster Analysis</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h1 className="text-xl font-bold text-stone-800">Cluster Analysis</h1>
+          <p className="text-sm text-stone-500 mt-0.5">
             {filename} · {detections.length} objects · {vectors.length} with feature vectors
           </p>
         </div>
@@ -249,7 +249,7 @@ export default function Cluster() {
           <button
             onClick={runClustering}
             disabled={running || !vectors.length}
-            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-600
+            className="px-4 py-2 bg-[#C9971A] hover:bg-[#a87d12] disabled:bg-stone-200
                        text-white text-sm font-semibold rounded-lg transition-colors"
           >
             {running ? 'Clustering…' : 'Run Clustering'}
@@ -267,12 +267,12 @@ export default function Cluster() {
       </div>
 
       {error && (
-        <div className="bg-red-900/40 border border-red-700 rounded-lg px-4 py-3
-                        text-red-300 text-sm">{error}</div>
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3
+                        text-red-700 text-sm">{error}</div>
       )}
 
       {/* Algorithm + options */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl px-5 py-4 space-y-4">
+      <div className="bg-white border border-[#F0E9B8] rounded-xl px-5 py-4 space-y-4">
 
         {/* Algorithm toggle */}
         <div className="flex gap-2">
@@ -286,8 +286,8 @@ export default function Cluster() {
               onClick={() => setAlgorithm(a.value)}
               className={`px-4 py-1.5 text-sm font-semibold rounded-lg transition-colors
                 ${algorithm === a.value
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:text-white'}`}
+                  ? 'bg-[#C9971A] text-white'
+                  : 'bg-[#F7F3D0] text-stone-500 hover:text-stone-900'}`}
             >
               {a.label}
             </button>
@@ -297,14 +297,14 @@ export default function Cluster() {
         {/* K-Means options */}
         {algorithm === 'kmeans' && (
           <div>
-            <label className="text-xs text-gray-400 block mb-1">
-              Clusters (k): <span className="text-white font-mono">{opts.k}</span>
+            <label className="text-xs text-stone-500 block mb-1">
+              Clusters (k): <span className="text-stone-800 font-mono">{opts.k}</span>
             </label>
             <input
               type="range" min={2} max={Math.min(10, detections.length)} step={1}
               value={opts.k}
               onChange={(e) => setOpt('k', Number(e.target.value))}
-              className="w-64 accent-emerald-400"
+              className="w-64 accent-[#C9971A]"
             />
           </div>
         )}
@@ -313,25 +313,25 @@ export default function Cluster() {
         {algorithm === 'dbscan' && (
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <label className="text-xs text-gray-400 block mb-1">
-                Epsilon (ε): <span className="text-white font-mono">{opts.eps.toFixed(1)}</span>
+              <label className="text-xs text-stone-500 block mb-1">
+                Epsilon (ε): <span className="text-stone-800 font-mono">{opts.eps.toFixed(1)}</span>
               </label>
               <input
                 type="range" min={0.5} max={10} step={0.5}
                 value={opts.eps}
                 onChange={(e) => setOpt('eps', Number(e.target.value))}
-                className="w-full accent-emerald-400"
+                className="w-full accent-[#C9971A]"
               />
             </div>
             <div>
-              <label className="text-xs text-gray-400 block mb-1">
-                Min points: <span className="text-white font-mono">{opts.minPts}</span>
+              <label className="text-xs text-stone-500 block mb-1">
+                Min points: <span className="text-stone-800 font-mono">{opts.minPts}</span>
               </label>
               <input
                 type="range" min={1} max={Math.max(1, Math.floor(detections.length / 2))} step={1}
                 value={opts.minPts}
                 onChange={(e) => setOpt('minPts', Number(e.target.value))}
-                className="w-full accent-emerald-400"
+                className="w-full accent-[#C9971A]"
               />
             </div>
           </div>
@@ -340,16 +340,16 @@ export default function Cluster() {
         {/* SOM options */}
         {algorithm === 'som' && (
           <div>
-            <label className="text-xs text-gray-400 block mb-1">
-              Output clusters (k): <span className="text-white font-mono">{opts.somK}</span>
+            <label className="text-xs text-stone-500 block mb-1">
+              Output clusters (k): <span className="text-stone-800 font-mono">{opts.somK}</span>
             </label>
             <input
               type="range" min={2} max={Math.min(10, detections.length)} step={1}
               value={opts.somK}
               onChange={(e) => setOpt('somK', Number(e.target.value))}
-              className="w-64 accent-emerald-400"
+              className="w-64 accent-[#C9971A]"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-stone-400 mt-1">
               SOM trains a 5×5 grid, then groups nodes into k clusters via K-Means.
             </p>
           </div>
@@ -371,18 +371,18 @@ export default function Cluster() {
               hint: 'Higher = better separation',
             },
           ].map(({ label, value, hint }) => (
-            <div key={label} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">{label}</p>
-              <p className="text-2xl font-bold text-emerald-400 font-mono">{value}</p>
-              {hint && <p className="text-xs text-gray-600 mt-0.5">{hint}</p>}
+            <div key={label} className="bg-white border border-[#F0E9B8] rounded-xl p-4">
+              <p className="text-xs text-stone-400 mb-1">{label}</p>
+              <p className="text-2xl font-bold text-[#C9971A] font-mono">{value}</p>
+              {hint && <p className="text-xs text-stone-400 mt-0.5">{hint}</p>}
             </div>
           ))}
         </div>
       )}
 
       {/* PCA scatter plot */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-gray-300 mb-4">
+      <div className="bg-white border border-[#F0E9B8] rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-stone-600 mb-4">
           Feature Space (PCA 2D projection)
         </h2>
         {projected.length >= 2 ? (
@@ -400,14 +400,14 @@ export default function Cluster() {
                       className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                       style={{ backgroundColor: clusterColor(l) }}
                     />
-                    <span className="text-xs text-gray-400">{name} ({count})</span>
+                    <span className="text-xs text-stone-500">{name} ({count})</span>
                   </div>
                 ))}
               </div>
             )}
           </>
         ) : (
-          <p className="text-sm text-gray-500 text-center py-8">
+          <p className="text-sm text-stone-400 text-center py-8">
             {vectors.length < 2
               ? 'Need at least 2 objects with feature vectors to project.'
               : 'Run clustering to see projection.'}
@@ -424,35 +424,35 @@ export default function Cluster() {
 
       {/* Cluster breakdown table */}
       {clusterSummary.length > 0 && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-700">
-            <h2 className="text-sm font-semibold text-gray-300">Cluster Summary</h2>
+        <div className="bg-white border border-[#F0E9B8] rounded-xl overflow-hidden">
+          <div className="px-5 py-3 border-b border-[#F0E9B8]">
+            <h2 className="text-sm font-semibold text-stone-600">Cluster Summary</h2>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-900 text-gray-400 text-xs uppercase tracking-wide">
+            <thead className="bg-[#FDFBF0] text-stone-500 text-xs uppercase tracking-wide">
               <tr>
                 {['Cluster', 'Objects', 'Avg Depth', 'Avg Position'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700">
+            <tbody className="divide-y divide-[#F0E9B8]">
               {clusterSummary.map(([name, { label: l, indices }]) => {
                 const members  = indices.map((i) => detections[i]);
                 const avgDepth = members.reduce((s, d) => s + (d.depth_m     ?? 0), 0) / members.length;
                 const avgPos   = members.reduce((s, d) => s + (d.position_m  ?? 0), 0) / members.length;
                 return (
-                  <tr key={name} className="hover:bg-gray-700/40 transition-colors">
+                  <tr key={name} className="hover:bg-[#FDFBF0] transition-colors">
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full"
                               style={{ backgroundColor: clusterColor(l) }} />
-                        <span className="text-white font-medium">{name}</span>
+                        <span className="text-stone-800 font-medium">{name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-2 text-gray-300 font-mono">{indices.length}</td>
-                    <td className="px-4 py-2 text-gray-300 font-mono">{avgDepth.toFixed(2)}m</td>
-                    <td className="px-4 py-2 text-gray-300 font-mono">{avgPos.toFixed(2)}m</td>
+                    <td className="px-4 py-2 text-stone-600 font-mono">{indices.length}</td>
+                    <td className="px-4 py-2 text-stone-600 font-mono">{avgDepth.toFixed(2)}m</td>
+                    <td className="px-4 py-2 text-stone-600 font-mono">{avgPos.toFixed(2)}m</td>
                   </tr>
                 );
               })}

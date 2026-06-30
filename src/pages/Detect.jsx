@@ -138,8 +138,8 @@ export default function Detect() {
   if (!matrix || !metadata) {
     return (
       <div className="p-8 text-center">
-        <p className="text-gray-400 mb-4">No scan loaded.</p>
-        <Link to="/upload" className="text-emerald-400 hover:underline">
+        <p className="text-stone-500 mb-4">No scan loaded.</p>
+        <Link to="/upload" className="text-[#C9971A] hover:underline">
           ← Upload a scan
         </Link>
       </div>
@@ -233,14 +233,14 @@ export default function Detect() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">Object Detection</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{filename}</p>
+          <h1 className="text-xl font-bold text-stone-800">Object Detection</h1>
+          <p className="text-sm text-stone-500 mt-0.5">{filename}</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={runDetection}
             disabled={running}
-            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-600
+            className="px-4 py-2 bg-[#C9971A] hover:bg-[#a87d12] disabled:bg-stone-200
                        text-white text-sm font-semibold rounded-lg transition-colors"
           >
             {running ? 'Detecting…' : 'Run Detection'}
@@ -262,14 +262,14 @@ export default function Detect() {
 
       {/* Error */}
       {error && (
-        <div className="bg-red-900/40 border border-red-700 rounded-lg px-4 py-3 text-red-300 text-sm">
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
           {error}
         </div>
       )}
 
       {/* Detection options */}
-      <details className="bg-gray-800 border border-gray-700 rounded-xl px-5 py-4">
-        <summary className="text-sm font-semibold text-gray-300 cursor-pointer select-none">
+      <details className="bg-white border border-[#F0E9B8] rounded-xl px-5 py-4">
+        <summary className="text-sm font-semibold text-stone-600 cursor-pointer select-none">
           Detection Options
         </summary>
         <div className="grid grid-cols-2 gap-x-8 gap-y-3 mt-4">
@@ -280,14 +280,14 @@ export default function Detect() {
             { key: 'depthMaxPct',     label: 'Max search depth',         unit: '% depth',  min: 50, max: 100, step: 5 },
           ].map(({ key, label, unit, min, max, step }) => (
             <div key={key}>
-              <label className="text-xs text-gray-400 block mb-1">
-                {label}: <span className="text-white font-mono">{opts[key]}{unit.startsWith('%') ? '%' : ` ${unit}`}</span>
+              <label className="text-xs text-stone-500 block mb-1">
+                {label}: <span className="text-stone-800 font-mono">{opts[key]}{unit.startsWith('%') ? '%' : ` ${unit}`}</span>
               </label>
               <input
                 type="range" min={min} max={max} step={step}
                 value={opts[key]}
                 onChange={(e) => setOpt(key, Number(e.target.value))}
-                className="w-full accent-emerald-400"
+                className="w-full accent-[#C9971A]"
               />
             </div>
           ))}
@@ -295,13 +295,13 @@ export default function Detect() {
       </details>
 
       {/* B-scan + overlay */}
-      <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+      <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-300">B-scan</span>
+          <span className="text-sm font-semibold text-stone-600">B-scan</span>
           <select
             value={colormap}
             onChange={(e) => setColormap(e.target.value)}
-            className="text-xs bg-gray-700 border border-gray-600 text-gray-200
+            className="text-xs bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700
                        rounded px-2 py-1"
           >
             {['seismic', 'grey', 'viridis', 'hot'].map((c) => (
@@ -348,7 +348,7 @@ export default function Detect() {
 
         {/* Hover info */}
         {hoverInfo && (
-          <div className="text-xs text-gray-400 font-mono">
+          <div className="text-xs text-stone-500 font-mono">
             Trace {hoverInfo.trace} · Sample {hoverInfo.sample} ·
             Depth {hoverInfo.depth_m?.toFixed(3)}m · Amp {hoverInfo.amplitude?.toFixed(1)}
           </div>
@@ -369,9 +369,9 @@ export default function Detect() {
               value: `${scanLengthM.toFixed(1)}m`,
             },
           ].map(({ label, value }) => (
-            <div key={label} className="bg-gray-800 border border-gray-700 rounded-xl p-4">
-              <p className="text-xs text-gray-500 mb-1">{label}</p>
-              <p className="text-2xl font-bold text-emerald-400">{value}</p>
+            <div key={label} className="bg-white border border-[#F0E9B8] rounded-xl p-4">
+              <p className="text-xs text-stone-400 mb-1">{label}</p>
+              <p className="text-2xl font-bold text-[#C9971A]">{value}</p>
             </div>
           ))}
         </div>
@@ -386,24 +386,24 @@ export default function Detect() {
 
       {/* Detection table */}
       {detections.length > 0 && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+        <div className="bg-white border border-[#F0E9B8] rounded-xl overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-900 text-gray-400 text-xs uppercase tracking-wide">
+            <thead className="bg-[#FDFBF0] text-stone-500 text-xs uppercase tracking-wide">
               <tr>
                 {['#', 'Position', 'Depth', 'Width', 'Height', 'Amplitude'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700">
+            <tbody className="divide-y divide-[#F0E9B8]">
               {detections.map((det, i) => (
-                <tr key={det.id} className="hover:bg-gray-700/40 transition-colors">
-                  <td className="px-4 py-2 text-gray-400 font-mono">{i + 1}</td>
-                  <td className="px-4 py-2 text-white font-mono">{det.position_m.toFixed(2)}m</td>
-                  <td className="px-4 py-2 text-white font-mono">{det.depth_m.toFixed(2)}m</td>
-                  <td className="px-4 py-2 text-gray-300 font-mono">{det.size_width_cm}cm</td>
-                  <td className="px-4 py-2 text-gray-300 font-mono">{det.size_height_cm}cm</td>
-                  <td className="px-4 py-2 text-gray-300 font-mono">
+                <tr key={det.id} className="hover:bg-[#FDFBF0] transition-colors">
+                  <td className="px-4 py-2 text-stone-500 font-mono">{i + 1}</td>
+                  <td className="px-4 py-2 text-stone-800 font-mono">{det.position_m.toFixed(2)}m</td>
+                  <td className="px-4 py-2 text-stone-800 font-mono">{det.depth_m.toFixed(2)}m</td>
+                  <td className="px-4 py-2 text-stone-600 font-mono">{det.size_width_cm}cm</td>
+                  <td className="px-4 py-2 text-stone-600 font-mono">{det.size_height_cm}cm</td>
+                  <td className="px-4 py-2 text-stone-600 font-mono">
                     {det.amplitude.toFixed(1)}
                   </td>
                 </tr>

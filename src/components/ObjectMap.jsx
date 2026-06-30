@@ -55,8 +55,8 @@ export default function ObjectMap({
   for (let m = 0; m <= scanLengthM; m += tickStep) ticks.push(m);
 
   return (
-    <div className="w-full bg-gray-800 rounded-xl border border-gray-700 p-4">
-      <h3 className="text-sm font-semibold text-gray-300 mb-3">
+    <div className="w-full bg-white rounded-xl border border-[#F0E9B8] p-4">
+      <h3 className="text-sm font-semibold text-stone-600 mb-3">
         Survey Map — {detections.length} object{detections.length !== 1 ? 's' : ''} detected
       </h3>
 
@@ -208,7 +208,7 @@ export default function ObjectMap({
                   className="inline-block w-2.5 h-2.5 rounded-full"
                   style={{ backgroundColor: col }}
                 />
-                <span className="text-xs text-gray-400 capitalize">{mat}</span>
+                <span className="text-xs text-stone-500 capitalize">{mat}</span>
               </div>
             );
           })}

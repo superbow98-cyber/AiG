@@ -51,8 +51,8 @@ const MODEL_OPTIONS = [
 // ── Section wrapper ───────────────────────────────────────────────────────────
 function Section({ title, children }) {
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-gray-300 border-b border-gray-700 pb-3">
+    <div className="bg-white border border-[#F0E9B8] rounded-xl p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-stone-600 border-b border-[#F0E9B8] pb-3">
         {title}
       </h2>
       {children}
@@ -64,8 +64,8 @@ function Row({ label, hint, children }) {
   return (
     <div className="flex items-center justify-between gap-6">
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-200">{label}</p>
-        {hint && <p className="text-xs text-gray-500 mt-0.5">{hint}</p>}
+        <p className="text-sm text-stone-700">{label}</p>
+        {hint && <p className="text-xs text-stone-400 mt-0.5">{hint}</p>}
       </div>
       <div className="flex-shrink-0">{children}</div>
     </div>
@@ -127,9 +127,9 @@ export default function Settings() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-white">Settings</h1>
+        <h1 className="text-xl font-bold text-stone-800">Settings</h1>
         {saved && (
-          <span className="text-xs text-emerald-400 font-mono">✓ Saved</span>
+          <span className="text-xs text-[#C9971A] font-mono">✓ Saved</span>
         )}
       </div>
 
@@ -142,7 +142,7 @@ export default function Settings() {
             label="Soil velocity"
             hint="Affects depth calculations across all pages"
           >
-            <span className="text-sm font-mono text-emerald-400 w-28 text-right">
+            <span className="text-sm font-mono text-[#C9971A] w-28 text-right">
               {velDisplay}
             </span>
           </Row>
@@ -151,7 +151,7 @@ export default function Settings() {
             min={0.06} max={0.16} step={0.001}
             value={settings.velocity}
             onChange={(e) => set('velocity', parseFloat(e.target.value))}
-            className="w-full accent-emerald-400"
+            className="w-full accent-[#C9971A]"
           />
           {/* Presets */}
           <div className="flex flex-wrap gap-2">
@@ -161,12 +161,23 @@ export default function Settings() {
                 onClick={() => set('velocity', vel)}
                 className={`px-2.5 py-1 text-xs rounded-full capitalize transition-colors
                   ${Math.abs(settings.velocity - vel) < 0.0005
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:text-white'}`}
+                    ? 'bg-[#C9971A] text-white'
+                    : 'bg-[#F7F3D0] text-stone-500 hover:text-stone-900'}`}
               >
                 {name} ({vel} m/ns)
               </button>
             ))}
+          </div>
+
+          {/* Malaysia tropical context note */}
+          <div className="flex items-start gap-2 bg-[#F7F3D0] border border-[#E8DFA0] rounded-lg px-3 py-2">
+            <span className="text-sm">🌴</span>
+            <p className="text-xs text-stone-500 leading-relaxed">
+              <span className="font-semibold text-stone-600">Tropical soil (Malaysia):</span> high
+              moisture lowers radar velocity (~0.055 m/ns) and attenuates the signal — expect
+              weaker, noisier B-scans. Lean on strong denoising (Background removal → PCA/ICA →
+              Autoencoder) in Preprocess to recover targets.
+            </p>
           </div>
         </div>
 
@@ -175,7 +186,7 @@ export default function Settings() {
           <select
             value={settings.colormap}
             onChange={(e) => set('colormap', e.target.value)}
-            className="bg-gray-700 border border-gray-600 text-gray-200 text-sm
+            className="bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
                        rounded-lg px-3 py-1.5"
           >
             {COLORMAPS.map((c) => (
@@ -194,7 +205,7 @@ export default function Settings() {
           <select
             value={settings.defaultModel}
             onChange={(e) => set('defaultModel', e.target.value)}
-            className="bg-gray-700 border border-gray-600 text-gray-200 text-sm
+            className="bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
                        rounded-lg px-3 py-1.5"
           >
             {MODEL_OPTIONS.map((o) => (
@@ -207,15 +218,15 @@ export default function Settings() {
       {/* ── Display ── */}
       <Section title="Display">
         <Row label="Units" hint="Affects depth and distance labels across all pages">
-          <div className="flex rounded-lg overflow-hidden border border-gray-600">
+          <div className="flex rounded-lg overflow-hidden border border-[#E8DFA0]">
             {['metric', 'imperial'].map((u) => (
               <button
                 key={u}
                 onClick={() => set('units', u)}
                 className={`px-4 py-1.5 text-sm font-semibold capitalize transition-colors
                   ${settings.units === u
-                    ? 'bg-emerald-500 text-white'
-                    : 'bg-gray-700 text-gray-400 hover:text-white'}`}
+                    ? 'bg-[#C9971A] text-white'
+                    : 'bg-[#F7F3D0] text-stone-500 hover:text-stone-900'}`}
               >
                 {u}
               </button>
@@ -229,10 +240,10 @@ export default function Settings() {
         {user ? (
           <div className="space-y-3">
             <Row label="Email" hint="Signed in via Google">
-              <span className="text-sm text-gray-300 font-mono">{user.email}</span>
+              <span className="text-sm text-stone-600 font-mono">{user.email}</span>
             </Row>
             <Row label="User ID" hint="Supabase auth UID">
-              <span className="text-xs text-gray-500 font-mono">
+              <span className="text-xs text-stone-400 font-mono">
                 {user.id.slice(0, 8)}…
               </span>
             </Row>
@@ -240,7 +251,7 @@ export default function Settings() {
               <button
                 onClick={handleSignOut}
                 disabled={signingOut}
-                className="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-gray-700
+                className="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-stone-200
                            text-white text-sm font-semibold rounded-lg transition-colors"
               >
                 {signingOut ? 'Signing out…' : 'Sign Out'}
@@ -248,7 +259,7 @@ export default function Settings() {
             </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-500">Loading profile…</p>
+          <p className="text-sm text-stone-400">Loading profile…</p>
         )}
       </Section>
 
@@ -256,8 +267,8 @@ export default function Settings() {
       <div className="flex justify-end">
         <button
           onClick={handleReset}
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-400
-                     hover:text-white text-sm rounded-lg transition-colors"
+          className="px-4 py-2 bg-[#F7F3D0] hover:bg-[#F0E9B8] text-stone-500
+                     hover:text-stone-900 text-sm rounded-lg transition-colors"
         >
           Reset to defaults
         </button>

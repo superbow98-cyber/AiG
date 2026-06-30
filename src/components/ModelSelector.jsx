@@ -29,9 +29,9 @@ const DEEP_MODELS = [
 ];
 
 const BADGE_STYLES = {
-  recommended: 'bg-emerald-500/20 text-emerald-400',
+  recommended: 'bg-amber-100 text-[#C9971A]',
   'phase 2':   'bg-amber-500/20 text-amber-400',
-  'phase 3':   'bg-violet-500/20 text-violet-400',
+  'phase 3':   'bg-violet-500/20 text-violet-600',
 };
 
 export default function ModelSelector({
@@ -58,9 +58,9 @@ export default function ModelSelector({
         value={value ?? ''}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className={`w-full bg-gray-700 border border-gray-600 text-gray-200 rounded-lg
+        className={`w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 rounded-lg
                     appearance-none cursor-pointer transition-colors
-                    hover:border-gray-500 focus:outline-none focus:border-emerald-500
+                    hover:border-[#E8DFA0] focus:outline-none focus:border-[#C9971A]
                     disabled:opacity-50 disabled:cursor-not-allowed
                     ${sizeClass}`}
       >
@@ -91,7 +91,7 @@ export default function ModelSelector({
 
       {/* Chevron icon */}
       <div className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center">
-        <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="w-4 h-4 text-stone-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </div>

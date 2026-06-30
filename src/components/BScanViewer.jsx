@@ -173,7 +173,7 @@ export default function BScanViewer({
       <div
         style={{ height }}
         className="flex items-center justify-center rounded-xl border border-dashed
-                   border-gray-700 bg-gray-800/50 text-sm text-gray-500"
+                   border-[#F0E9B8] bg-white/60 text-sm text-stone-400"
       >
         No scan loaded
       </div>
@@ -181,7 +181,7 @@ export default function BScanViewer({
   }
 
   return (
-    <div ref={containerRef} className="w-full overflow-hidden rounded-xl border border-gray-700">
+    <div ref={containerRef} className="w-full overflow-hidden rounded-xl border border-[#F0E9B8]">
       <canvas
         ref={canvasRef}
         width={canvasWidth}

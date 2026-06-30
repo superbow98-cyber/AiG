@@ -265,3 +265,83 @@ export function predictMaterial(matches) {
   const confidence = totalWeight > 0 ? bestWeight / totalWeight : 0;
   return { material: bestMaterial, confidence, votes };
 }
+
+// ── findPeaks ────────────────────────────────────────────────────────────────
+// Local-maxima (hyperbola-apex candidate) detector over a B-scan matrix.
+//   matrix[sampleIndex][traceIndex] = amplitude
+// options:
+//   minAmplitude   — ignore peaks weaker than this absolute amplitude
+//   neighborRadius — non-max suppression radius (samples & traces)
+//   depthRange     — [startSample, endSample) window to search (skips direct wave)
+// Returns: Array<{ sample, trace, amplitude }> sorted by |amplitude| desc.
+export function findPeaks(matrix, { minAmplitude = 0, neighborRadius = 3, depthRange } = {}) {
+  const rows = matrix.length;
+  const cols = rows > 0 ? matrix[0].length : 0;
+  if (rows === 0 || cols === 0) return [];
+
+  const sStart = depthRange ? Math.max(0, depthRange[0]) : 0;
+  const sEnd = depthRange ? Math.min(rows, depthRange[1]) : rows;
+  const r = Math.max(1, neighborRadius | 0);
+
+  const candidates = [];
+  for (let s = sStart; s < sEnd; s++) {
+    for (let t = 0; t < cols; t++) {
+      const av = Math.abs(matrix[s][t]);
+      if (av < minAmplitude) continue;
+
+      let isMax = true;
+      for (let ds = -r; ds <= r && isMax; ds++) {
+        const ss = s + ds;
+        if (ss < 0 || ss >= rows) continue;
+        for (let dt = -r; dt <= r; dt++) {
+          const tt = t + dt;
+          if (tt < 0 || tt >= cols) continue;
+          if (ss === s && tt === t) continue;
+          if (Math.abs(matrix[ss][tt]) > av) { isMax = false; break; }
+        }
+      }
+      if (isMax) candidates.push({ sample: s, trace: t, amplitude: matrix[s][t] });
+    }
+  }
+
+  // greedy non-maximum suppression by descending |amplitude|
+  candidates.sort((a, b) => Math.abs(b.amplitude) - Math.abs(a.amplitude));
+  const kept = [];
+  for (const c of candidates) {
+    let ok = true;
+    for (const k of kept) {
+      if (Math.abs(k.sample - c.sample) <= r && Math.abs(k.trace - c.trace) <= r) { ok = false; break; }
+    }
+    if (ok) kept.push(c);
+  }
+  return kept;
+}
+
+// ── predictElements ──────────────────────────────────────────────────────────
+// Predicted elemental profile (the PhD novelty: GPR pattern → likely chemistry).
+// Weighted average of the matched neighbours' xrf_elements vectors, weighted by
+// cosine similarity. Returns { elements: { Fe: .., Ca: .., ... }, fromMatches }.
+// Neighbours store xrf_elements either as an object {Fe:.., Ca:..} or array.
+export function predictElements(matches) {
+  if (!matches?.length) return { elements: {}, fromMatches: 0 };
+  const acc = {};
+  let totalW = 0;
+  let used = 0;
+  for (const m of matches) {
+    const el = m.record?.xrf_elements;
+    if (!el) continue;
+    const w = Math.max(0, m.similarity ?? 0) || 1e-6;
+    const entries = Array.isArray(el)
+      ? el.map((v, i) => [`E${i}`, v])
+      : Object.entries(el);
+    for (const [k, v] of entries) {
+      const num = Number(v);
+      if (Number.isNaN(num)) continue;
+      acc[k] = (acc[k] ?? 0) + num * w;
+    }
+    totalW += w;
+    used += 1;
+  }
+  if (totalW > 0) for (const k of Object.keys(acc)) acc[k] /= totalW;
+  return { elements: acc, fromMatches: used };
+}

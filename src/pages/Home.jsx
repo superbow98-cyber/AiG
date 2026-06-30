@@ -61,7 +61,7 @@ const STATS = [
 ]
 
 export default function Home() {
-  const { user, loading, signInWithGoogle } = useAuth()
+  const { user, loading, signInWithGoogle, signInAsGuest } = useAuth()
   const navigate = useNavigate()
 
   // Auto-redirect if already logged in
@@ -77,6 +77,11 @@ export default function Home() {
     } catch (err) {
       console.error('Sign-in failed:', err)
     }
+  }
+
+  const handleGuest = () => {
+    signInAsGuest()
+    navigate('/dashboard', { replace: true })
   }
 
   // Restoring session — avoid flashing the landing page before redirect
@@ -153,6 +158,14 @@ export default function Home() {
               <ArrowRight className="w-4 h-4" />
             </a>
           </div>
+
+          <button
+            onClick={handleGuest}
+            className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-emerald-800 hover:text-emerald-900 underline-offset-4 hover:underline transition-colors"
+          >
+            Continue as guest
+            <span className="text-stone-400">— explore the full pipeline, no setup</span>
+          </button>
         </section>
 
         {/* Flow strip */}

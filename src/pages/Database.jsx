@@ -164,8 +164,8 @@ export default function Database() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-white">GPR+XRF Reference Database</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
+          <h1 className="text-xl font-bold text-stone-800">GPR+XRF Reference Database</h1>
+          <p className="text-sm text-stone-500 mt-0.5">
             {total} record{total !== 1 ? 's' : ''} · confirmed excavation data
           </p>
         </div>
@@ -176,8 +176,8 @@ export default function Database() {
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors capitalize
                 ${tab === t
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:text-white'}`}
+                  ? 'bg-[#C9971A] text-white'
+                  : 'bg-[#F7F3D0] text-stone-500 hover:text-stone-900'}`}
             >
               {t === 'browse' ? 'Browse Records' : '+ Add Record'}
             </button>
@@ -196,22 +196,22 @@ export default function Database() {
               placeholder="Filter by material…"
               value={searchMat}
               onChange={(e) => setSearchMat(e.target.value)}
-              className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 text-sm
-                         rounded-lg px-3 py-2 placeholder-gray-500 focus:outline-none
-                         focus:border-emerald-500"
+              className="flex-1 bg-white border border-[#F0E9B8] text-stone-700 text-sm
+                         rounded-lg px-3 py-2 placeholder-stone-400 focus:outline-none
+                         focus:border-[#C9971A]"
             />
             <input
               type="text"
               placeholder="Filter by site ID…"
               value={searchSite}
               onChange={(e) => setSearchSite(e.target.value)}
-              className="flex-1 bg-gray-800 border border-gray-700 text-gray-200 text-sm
-                         rounded-lg px-3 py-2 placeholder-gray-500 focus:outline-none
-                         focus:border-emerald-500"
+              className="flex-1 bg-white border border-[#F0E9B8] text-stone-700 text-sm
+                         rounded-lg px-3 py-2 placeholder-stone-400 focus:outline-none
+                         focus:border-[#C9971A]"
             />
             <button
               onClick={fetchRecords}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200
+              className="px-4 py-2 bg-[#F7F3D0] hover:bg-[#F0E9B8] text-stone-700
                          text-sm font-semibold rounded-lg transition-colors"
             >
               Refresh
@@ -220,62 +220,62 @@ export default function Database() {
 
           {/* Error */}
           {error && (
-            <div className="bg-red-900/40 border border-red-700 rounded-lg px-4 py-3
-                            text-red-300 text-sm">
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3
+                            text-red-700 text-sm">
               {error}
             </div>
           )}
 
           {/* Loading */}
           {loading && (
-            <div className="text-center py-8 text-gray-500 text-sm">Loading…</div>
+            <div className="text-center py-8 text-stone-400 text-sm">Loading…</div>
           )}
 
           {/* Table */}
           {!loading && records.length > 0 && (
-            <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+            <div className="bg-white border border-[#F0E9B8] rounded-xl overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-gray-900 text-gray-400 text-xs uppercase tracking-wide">
+                <thead className="bg-[#FDFBF0] text-stone-500 text-xs uppercase tracking-wide">
                   <tr>
                     {['Site', 'Material', 'Depth', 'Size', 'Date', 'Notes', ''].map((h) => (
                       <th key={h} className="px-4 py-3 text-left">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-700">
+                <tbody className="divide-y divide-[#F0E9B8]">
                   {records.map((rec) => (
                     <>
                       <tr
                         key={rec.id}
-                        className="hover:bg-gray-700/40 transition-colors cursor-pointer"
+                        className="hover:bg-[#FDFBF0] transition-colors cursor-pointer"
                         onClick={() => setExpandedId(expandedId === rec.id ? null : rec.id)}
                       >
-                        <td className="px-4 py-2 text-gray-300 font-mono text-xs">
+                        <td className="px-4 py-2 text-stone-600 font-mono text-xs">
                           {rec.site_id ?? '—'}
                         </td>
                         <td className="px-4 py-2">
-                          <span className="text-white capitalize font-medium">
+                          <span className="text-stone-800 capitalize font-medium">
                             {rec.xrf_material ?? '—'}
                           </span>
                         </td>
-                        <td className="px-4 py-2 text-gray-300 font-mono">
+                        <td className="px-4 py-2 text-stone-600 font-mono">
                           {rec.depth_m != null ? `${rec.depth_m.toFixed(2)}m` : '—'}
                         </td>
-                        <td className="px-4 py-2 text-gray-400 font-mono text-xs">
+                        <td className="px-4 py-2 text-stone-500 font-mono text-xs">
                           {rec.size_width_cm && rec.size_height_cm
                             ? `${rec.size_width_cm}×${rec.size_height_cm}cm`
                             : '—'}
                         </td>
-                        <td className="px-4 py-2 text-gray-400 text-xs">
+                        <td className="px-4 py-2 text-stone-500 text-xs">
                           {rec.excavation_date ?? '—'}
                         </td>
-                        <td className="px-4 py-2 text-gray-500 text-xs max-w-xs truncate">
+                        <td className="px-4 py-2 text-stone-400 text-xs max-w-xs truncate">
                           {rec.notes ?? '—'}
                         </td>
                         <td className="px-4 py-2">
                           <button
                             onClick={(e) => { e.stopPropagation(); setDeleteId(rec.id); }}
-                            className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                            className="text-xs text-red-600 hover:text-red-700 transition-colors"
                           >
                             Delete
                           </button>
@@ -285,10 +285,10 @@ export default function Database() {
                       {/* Expanded row */}
                       {expandedId === rec.id && (
                         <tr key={`${rec.id}-exp`}>
-                          <td colSpan={7} className="px-6 py-4 bg-gray-900">
+                          <td colSpan={7} className="px-6 py-4 bg-[#FDFBF0]">
                             <div className="grid grid-cols-2 gap-6 text-xs">
                               <div className="space-y-2">
-                                <p className="text-gray-400 font-semibold mb-1">Details</p>
+                                <p className="text-stone-500 font-semibold mb-1">Details</p>
                                 {[
                                   ['Scan file',  rec.scan_filename],
                                   ['GPS',        rec.gps_lat && rec.gps_lng ? `${rec.gps_lat}, ${rec.gps_lng}` : null],
@@ -297,21 +297,21 @@ export default function Database() {
                                   ['GPR sig',    rec.gpr_signature?.length ? `${rec.gpr_signature.length}-dim vector` : null],
                                 ].map(([label, val]) => val ? (
                                   <div key={label} className="flex gap-2">
-                                    <span className="text-gray-500 w-24 flex-shrink-0">{label}</span>
-                                    <span className="text-gray-300 font-mono">{val}</span>
+                                    <span className="text-stone-400 w-24 flex-shrink-0">{label}</span>
+                                    <span className="text-stone-600 font-mono">{val}</span>
                                   </div>
                                 ) : null)}
                               </div>
                               {rec.xrf_elements && (
                                 <div>
-                                  <p className="text-gray-400 font-semibold mb-1">XRF Elements</p>
+                                  <p className="text-stone-500 font-semibold mb-1">XRF Elements</p>
                                   <div className="flex flex-wrap gap-2">
                                     {Object.entries(rec.xrf_elements)
                                       .sort((a, b) => b[1] - a[1])
                                       .map(([el, pct]) => (
                                         <span
                                           key={el}
-                                          className="bg-gray-700 text-gray-200 px-2 py-1 rounded font-mono"
+                                          className="bg-[#F7F3D0] text-stone-700 px-2 py-1 rounded font-mono"
                                         >
                                           {el}: {typeof pct === 'number' ? pct.toFixed(1) : pct}%
                                         </span>
@@ -332,20 +332,20 @@ export default function Database() {
 
           {/* Empty state */}
           {!loading && records.length === 0 && (
-            <div className="text-center py-12 text-gray-500 text-sm">
+            <div className="text-center py-12 text-stone-400 text-sm">
               No records found. Add confirmed excavation data via the "Add Record" tab.
             </div>
           )}
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between text-sm text-gray-400">
+            <div className="flex items-center justify-between text-sm text-stone-500">
               <span>Page {page + 1} of {totalPages} · {total} records</span>
               <div className="flex gap-2">
                 <button
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                   disabled={page === 0}
-                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-40
+                  className="px-3 py-1 bg-[#F7F3D0] hover:bg-[#F0E9B8] disabled:opacity-40
                              rounded-lg transition-colors"
                 >
                   ← Prev
@@ -353,7 +353,7 @@ export default function Database() {
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                   disabled={page >= totalPages - 1}
-                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-40
+                  className="px-3 py-1 bg-[#F7F3D0] hover:bg-[#F0E9B8] disabled:opacity-40
                              rounded-lg transition-colors"
                 >
                   Next →
@@ -365,9 +365,9 @@ export default function Database() {
           {/* Delete confirm modal */}
           {deleteId && (
             <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 w-80 space-y-4">
-                <p className="text-white font-semibold">Delete this record?</p>
-                <p className="text-gray-400 text-sm">This cannot be undone.</p>
+              <div className="bg-white border border-[#F0E9B8] rounded-xl p-6 w-80 space-y-4">
+                <p className="text-stone-800 font-semibold">Delete this record?</p>
+                <p className="text-stone-500 text-sm">This cannot be undone.</p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => handleDelete(deleteId)}
@@ -378,7 +378,7 @@ export default function Database() {
                   </button>
                   <button
                     onClick={() => setDeleteId(null)}
-                    className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200
+                    className="flex-1 py-2 bg-[#F7F3D0] hover:bg-[#F0E9B8] text-stone-700
                                text-sm font-semibold rounded-lg transition-colors"
                   >
                     Cancel
@@ -392,8 +392,8 @@ export default function Database() {
 
       {/* ── ADD TAB ── */}
       {tab === 'add' && (
-        <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 space-y-5">
-          <p className="text-sm text-gray-400">
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-6 space-y-5">
+          <p className="text-sm text-stone-500">
             Add a confirmed excavation record. This data trains future k-NN classification.
           </p>
 
@@ -401,13 +401,13 @@ export default function Database() {
 
             {/* Material — required */}
             <div>
-              <label className="text-xs text-gray-400 block mb-1">
-                Material <span className="text-red-400">*</span>
+              <label className="text-xs text-stone-500 block mb-1">
+                Material <span className="text-red-600">*</span>
               </label>
               <select
                 value={form.xrf_material}
                 onChange={(e) => setField('xrf_material', e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm
+                className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
                            rounded-lg px-3 py-2"
               >
                 <option value="">Select material…</option>
@@ -419,15 +419,15 @@ export default function Database() {
 
             {/* Depth — required */}
             <div>
-              <label className="text-xs text-gray-400 block mb-1">
-                Depth (m) <span className="text-red-400">*</span>
+              <label className="text-xs text-stone-500 block mb-1">
+                Depth (m) <span className="text-red-600">*</span>
               </label>
               <input
                 type="number" step="0.01" placeholder="e.g. 0.85"
                 value={form.depth_m}
                 onChange={(e) => setField('depth_m', e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm
-                           rounded-lg px-3 py-2 placeholder-gray-500"
+                className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
+                           rounded-lg px-3 py-2 placeholder-stone-400"
               />
             </div>
 
@@ -441,14 +441,14 @@ export default function Database() {
               { key: 'excavation_date',label: 'Excavation Date',  placeholder: '',           type: 'date'   },
             ].map(({ key, label, placeholder, type = 'text' }) => (
               <div key={key}>
-                <label className="text-xs text-gray-400 block mb-1">{label}</label>
+                <label className="text-xs text-stone-500 block mb-1">{label}</label>
                 <input
                   type={type}
                   placeholder={placeholder}
                   value={form[key]}
                   onChange={(e) => setField(key, e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm
-                             rounded-lg px-3 py-2 placeholder-gray-500"
+                  className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
+                             rounded-lg px-3 py-2 placeholder-stone-400"
                 />
               </div>
             ))}
@@ -456,41 +456,41 @@ export default function Database() {
 
           {/* XRF elements */}
           <div>
-            <label className="text-xs text-gray-400 block mb-1">
+            <label className="text-xs text-stone-500 block mb-1">
               XRF Elements
-              <span className="ml-2 text-gray-600">Fe:12.3, Ca:8.1, Si:4.2 — or JSON</span>
+              <span className="ml-2 text-stone-400">Fe:12.3, Ca:8.1, Si:4.2 — or JSON</span>
             </label>
             <input
               type="text"
               placeholder='Fe:12.3, Ca:8.1, Si:4.2'
               value={form.xrf_elements}
               onChange={(e) => setField('xrf_elements', e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm
-                         rounded-lg px-3 py-2 placeholder-gray-500"
+              className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
+                         rounded-lg px-3 py-2 placeholder-stone-400"
             />
           </div>
 
           {/* Notes */}
           <div>
-            <label className="text-xs text-gray-400 block mb-1">Notes</label>
+            <label className="text-xs text-stone-500 block mb-1">Notes</label>
             <textarea
               rows={3}
               placeholder="Context, soil type, excavation conditions…"
               value={form.notes}
               onChange={(e) => setField('notes', e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm
-                         rounded-lg px-3 py-2 placeholder-gray-500 resize-none"
+              className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
+                         rounded-lg px-3 py-2 placeholder-stone-400 resize-none"
             />
           </div>
 
           {/* Submit feedback */}
-          {submitMsg   && <p className="text-emerald-400 text-sm">{submitMsg}</p>}
-          {submitError && <p className="text-red-400 text-sm">{submitError}</p>}
+          {submitMsg   && <p className="text-[#C9971A] text-sm">{submitMsg}</p>}
+          {submitError && <p className="text-red-600 text-sm">{submitError}</p>}
 
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-600
+            className="w-full py-2.5 bg-[#C9971A] hover:bg-[#a87d12] disabled:bg-stone-200
                        text-white text-sm font-semibold rounded-lg transition-colors"
           >
             {submitting ? 'Saving…' : 'Save Record'}
