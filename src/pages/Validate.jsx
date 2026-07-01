@@ -39,8 +39,8 @@ const MATERIAL_COLORS = {
   void:    '#9CA3AF',
 };
 
-function pct(n) { return (n * 100).toFixed(0) + '%'; }
-function f2(n)  { return n.toFixed(2); }
+function pct(n) { return typeof n === 'number' ? (n * 100).toFixed(0) + '%' : '—'; }
+function f2(n)  { return typeof n === 'number' ? n.toFixed(2) : '—'; }
 
 // ── Calibration bar ───────────────────────────────────────────────────────────
 function CalBar({ bucket }) {
@@ -200,8 +200,8 @@ export default function Validate() {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
             { label: 'Accuracy',    value: pct(acc),           sub: `${n} validated objects` },
-            { label: 'Macro F1',    value: f2(perClass.macro),  sub: 'unweighted mean' },
-            { label: 'Weighted F1', value: f2(perClass.weighted), sub: 'by support' },
+            { label: 'Macro F1',    value: f2(perClass.macro?.f1),    sub: 'unweighted mean' },
+            { label: 'Weighted F1', value: f2(perClass.weighted?.f1), sub: 'by support' },
             { label: 'Materials',   value: labels.length,       sub: labels.join(', ') },
           ].map(s => (
             <div key={s.label} className="rounded-xl border border-amber-100 bg-white p-4 shadow-sm">
@@ -307,7 +307,7 @@ export default function Validate() {
               <tr>
                 <td className="pt-2 font-medium">Macro avg</td>
                 <td colSpan={2} />
-                <td className="pt-2 font-mono font-semibold text-stone-600">{f2(perClass.macro)}</td>
+                <td className="pt-2 font-mono font-semibold text-stone-600">{f2(perClass.macro?.f1)}</td>
                 <td className="pt-2 font-mono">{n}</td>
               </tr>
             </tfoot>
