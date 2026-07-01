@@ -92,7 +92,7 @@ export default function Classify() {
       try {
         const { data, error } = await supabase
           .from('gpr_xrf_records')
-          .select('id, xrf_material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id');
+          .select('id, xrf_material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, object_size_cm, site_id');
         if (error) throw error;
         setDbRecords(data ?? []);
       } catch (e) {
@@ -476,7 +476,7 @@ export default function Classify() {
                   {/* Object metrics */}
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: 'Size',      value: `${res.size_width_cm}×${res.size_height_cm}cm` },
+                      { label: 'Size',      value: `${res.object_size_cm}×${res.size_height_cm}cm` },
                       { label: 'DB matches', value: res.db_match_count ?? 0 },
                       { label: 'Amplitude', value: res.amplitude?.toFixed(1) ?? '—' },
                     ].map(({ label, value }) => (
