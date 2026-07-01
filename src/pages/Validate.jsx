@@ -1,288 +1,320 @@
 // AiG — Validate.jsx
-// Stage 5 · Validation & Metrics — answers PhD RQ4:
-//   "What is the accuracy and reliability of pre-excavation material prediction?"
-//
-// Compares the material AiG PREDICTED (from the GPR pattern) against the
-// ground-truth material CONFIRMED by pXRF / excavation, and reports
-// accuracy, confusion matrix, per-material precision/recall/F1, and
-// confidence calibration.
-//
-// Data sources:
-//   • Supabase `gpr_xrf_records` rows that have BOTH a predicted_material and a
-//     confirmed xrf_material (the validation set).
-//   • A built-in demo evaluation, so the page is useful before real data exists.
-//
-// Consumed by: App.jsx (route /validate)
+// Validation & Metrics page — answers RQ4: accuracy & reliability of pre-excavation prediction.
+// Reads predicted vs xrf_material from gpr_xrf_records; demo-data fallback.
+// Includes "Save as Picture" button using html2canvas.
 
-import { useState, useEffect } from 'react';
-import { ClipboardCheck, Database as DbIcon, FlaskConical, Info } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { useState, useRef } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 import { evaluate } from '../utils/metrics';
+import html2canvas from 'html2canvas';
+import { Download, RefreshCw, Database, FlaskConical } from 'lucide-react';
 
-const MATERIALS = ['ceramic', 'metal', 'bone', 'stone', 'void'];
+// ── Demo data (48 validated objects) ─────────────────────────────────────────
+const DEMO_PAIRS = [
+  // bone (11)
+  ...Array(10).fill({ actual: 'bone',    predicted: 'bone',    confidence: 0.91 }),
+  { actual: 'bone',    predicted: 'metal',   confidence: 0.55 },
+  // ceramic (14)
+  ...Array(2).fill( { actual: 'ceramic', predicted: 'bone',    confidence: 0.52 }),
+  ...Array(11).fill({ actual: 'ceramic', predicted: 'ceramic', confidence: 0.88 }),
+  { actual: 'ceramic', predicted: 'metal',   confidence: 0.61 },
+  // metal (7)
+  ...Array(6).fill( { actual: 'metal',   predicted: 'metal',   confidence: 0.86 }),
+  { actual: 'metal',   predicted: 'stone',   confidence: 0.63 },
+  // stone (9)
+  ...Array(2).fill( { actual: 'stone',   predicted: 'metal',   confidence: 0.58 }),
+  ...Array(6).fill( { actual: 'stone',   predicted: 'stone',   confidence: 0.79 }),
+  { actual: 'stone',   predicted: 'void',    confidence: 0.54 },
+  // void (7)
+  { actual: 'void',    predicted: 'ceramic', confidence: 0.51 },
+  ...Array(6).fill( { actual: 'void',    predicted: 'void',    confidence: 0.87 }),
+];
 
-// Deterministic-ish synthetic validation set (~82% accuracy, calibrated-ish).
-function demoPairs(n = 48) {
-  const out = [];
-  let seed = 7;
-  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-  for (let i = 0; i < n; i++) {
-    const actual = MATERIALS[Math.floor(rnd() * MATERIALS.length)];
-    const correct = rnd() < 0.82;
-    let predicted = actual;
-    if (!correct) {
-      do { predicted = MATERIALS[Math.floor(rnd() * MATERIALS.length)]; }
-      while (predicted === actual);
-    }
-    const confidence = correct
-      ? 0.6 + rnd() * 0.4
-      : 0.3 + rnd() * 0.4;
-    out.push({ predicted, actual, confidence: +confidence.toFixed(2) });
-  }
-  return out;
-}
+const MATERIAL_COLORS = {
+  bone:    '#C9971A',
+  ceramic: '#7C6E3A',
+  metal:   '#4A7FA5',
+  stone:   '#6B7280',
+  void:    '#9CA3AF',
+};
 
-function pct(x) { return `${Math.round(x * 100)}%`; }
+function pct(n) { return (n * 100).toFixed(0) + '%'; }
+function f2(n)  { return n.toFixed(2); }
 
-function StatCard({ label, value, sub, accent }) {
+// ── Calibration bar ───────────────────────────────────────────────────────────
+function CalBar({ bucket }) {
+  const accW  = bucket.count ? bucket.accuracy * 100 : 0;
+  const confW = bucket.count ? bucket.avgConfidence * 100 : 0;
   return (
-    <div className="bg-white border border-[#F0E9B8] rounded-2xl p-5 shadow-sm">
-      <p className="text-xs font-medium text-stone-500">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${accent ? 'text-[#C9971A]' : 'text-stone-800'}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-stone-400">{sub}</p>}
+    <div className="mb-2">
+      <div className="flex justify-between text-xs text-stone-500 mb-1">
+        <span>{bucket.range}</span>
+        <span>{bucket.count ? pct(bucket.accuracy) + ' acc' : '—'}</span>
+      </div>
+      <div className="relative h-4 rounded bg-stone-100">
+        <div className="absolute inset-y-0 left-0 rounded bg-amber-200" style={{ width: confW + '%' }} />
+        <div className="absolute inset-y-0 left-0 rounded bg-amber-500 opacity-80" style={{ width: accW + '%' }} />
+      </div>
     </div>
   );
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function Validate() {
-  const [source, setSource] = useState('database'); // 'database' | 'demo'
-  const [dbPairs, setDbPairs] = useState([]);
+  const { isGuest } = useAuth();
+  const [source, setSource]   = useState('demo');   // 'demo' | 'db'
+  const [result, setResult]   = useState(() => evaluate(DEMO_PAIRS));
   const [loading, setLoading] = useState(false);
-  const [dbError, setDbError] = useState(null);
+  const [error, setError]     = useState(null);
+  const [saving, setSaving]   = useState(false);
+  const reportRef = useRef(null);
 
-  useEffect(() => {
-    let active = true;
-    async function load() {
-      setLoading(true);
-      setDbError(null);
-      try {
-        // Try to read predicted + confirmed columns; tolerate older schemas.
-        let { data, error } = await supabase
-          .from('gpr_xrf_records')
-          .select('xrf_material, predicted_material, predicted_confidence');
-        if (error) {
-          const fallback = await supabase
-            .from('gpr_xrf_records')
-            .select('xrf_material');
-          data = fallback.data;
-        }
-        if (!active) return;
-        const pairs = (data ?? [])
-          .filter((r) => r.xrf_material && r.predicted_material)
-          .map((r) => ({
-            actual: r.xrf_material,
-            predicted: r.predicted_material,
-            confidence: typeof r.predicted_confidence === 'number' ? r.predicted_confidence : undefined,
-          }));
-        setDbPairs(pairs);
-      } catch (e) {
-        if (active) setDbError(e.message ?? 'Failed to load records');
-      } finally {
-        if (active) setLoading(false);
-      }
+  // ── Load from Supabase ──────────────────────────────────────────────────────
+  async function loadFromDB() {
+    if (!isSupabaseConfigured || isGuest) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase
+        .from('gpr_xrf_records')
+        .select('xrf_material, predicted_material, predicted_confidence')
+        .not('predicted_material', 'is', null);
+      if (err) throw err;
+      if (!data.length) throw new Error('No validated records found in database yet.');
+      const pairs = data.map(r => ({
+        actual:     r.xrf_material,
+        predicted:  r.predicted_material,
+        confidence: r.predicted_confidence ?? 0.5,
+      }));
+      setResult(evaluate(pairs));
+      setSource('db');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
     }
-    load();
-    return () => { active = false; };
-  }, []);
+  }
 
-  const pairs = source === 'demo' ? demoPairs() : dbPairs;
-  const hasData = pairs.length > 0;
-  const ev = hasData ? evaluate(pairs) : null;
+  function loadDemo() {
+    setResult(evaluate(DEMO_PAIRS));
+    setSource('demo');
+    setError(null);
+  }
+
+  // ── Save as Picture ─────────────────────────────────────────────────────────
+  async function saveAsPicture() {
+    if (!reportRef.current) return;
+    setSaving(true);
+    try {
+      const canvas = await html2canvas(reportRef.current, {
+        backgroundColor: '#FDFBF0',
+        scale: 2,               // 2× for retina sharpness
+        useCORS: true,
+        logging: false,
+      });
+      const link = document.createElement('a');
+      link.download = `AiG-Validation-${new Date().toISOString().slice(0,10)}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) {
+      console.error('Screenshot failed:', e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const { n, labels, accuracy: acc, confusion, perClass, calibration } = result;
 
   return (
-    <div className="min-h-full p-6" style={{ background: '#FDFBF0' }}>
+    <div className="min-h-screen bg-[#FDFBF0] p-6">
       {/* Header */}
-      <div className="mb-2 flex items-center gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[#C9971A] bg-[#F7F3D0] border border-[#E8DFA0] px-2 py-0.5 rounded-full">
-          Stage 5 · Validation
-        </span>
-      </div>
-      <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-stone-800 flex items-center gap-2">
-            <ClipboardCheck className="w-6 h-6 text-[#C9971A]" />
-            Validation &amp; Metrics
-          </h1>
-          <p className="text-stone-500 text-sm mt-1 max-w-2xl">
+          <h1 className="text-2xl font-bold text-stone-800">Validation &amp; Metrics</h1>
+          <p className="mt-1 text-sm text-stone-500">
             Predicted material (from GPR pattern) vs ground-truth (pXRF / excavation).
-            This answers RQ4 — the accuracy &amp; reliability of pre-excavation prediction.
+            This answers <strong>RQ4</strong> — the accuracy &amp; reliability of pre-excavation prediction.
           </p>
         </div>
-        {/* Source toggle */}
-        <div className="flex rounded-lg overflow-hidden border border-[#E8DFA0]">
-          {[
-            { v: 'database', label: 'Database', Icon: DbIcon },
-            { v: 'demo', label: 'Demo data', Icon: FlaskConical },
-          ].map(({ v, label, Icon }) => (
+
+        {/* Controls */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={loadDemo}
+            className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+          >
+            <FlaskConical className="h-4 w-4" />
+            Demo data
+          </button>
+
+          {isSupabaseConfigured && !isGuest && (
             <button
-              key={v}
-              onClick={() => setSource(v)}
-              className={`px-3 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
-                source === v ? 'bg-[#C9971A] text-white' : 'bg-[#F7F3D0] text-stone-500 hover:text-stone-900'
-              }`}
+              onClick={loadFromDB}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors disabled:opacity-50"
             >
-              <Icon className="w-3.5 h-3.5" /> {label}
+              {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+              Database
             </button>
+          )}
+
+          {/* Save as Picture */}
+          <button
+            onClick={saveAsPicture}
+            disabled={saving}
+            className="flex items-center gap-1.5 rounded-lg bg-[#C9971A] px-3 py-2 text-sm font-medium text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            {saving ? 'Saving…' : 'Save as Picture'}
+          </button>
+        </div>
+      </div>
+
+      {/* Source badge */}
+      <div className="mb-4">
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+          source === 'demo'
+            ? 'bg-amber-100 text-amber-800'
+            : 'bg-green-100 text-green-800'
+        }`}>
+          {source === 'demo' ? '⚗️ Demo data' : '🗄️ Database'}
+        </span>
+        {source === 'demo' && (
+          <span className="ml-2 text-xs text-stone-400">
+            Showing built-in demo data — switch to "Database" once you have confirmed pXRF records.
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {/* ── Capturable report section ── */}
+      <div ref={reportRef} className="space-y-6 bg-[#FDFBF0] p-2">
+
+        {/* Summary stats */}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[
+            { label: 'Accuracy',    value: pct(acc),           sub: `${n} validated objects` },
+            { label: 'Macro F1',    value: f2(perClass.macro),  sub: 'unweighted mean' },
+            { label: 'Weighted F1', value: f2(perClass.weighted), sub: 'by support' },
+            { label: 'Materials',   value: labels.length,       sub: labels.join(', ') },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl border border-amber-100 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{s.label}</p>
+              <p className="mt-1 text-3xl font-bold text-[#C9971A]">{s.value}</p>
+              <p className="mt-0.5 text-xs text-stone-400 truncate">{s.sub}</p>
+            </div>
           ))}
         </div>
-      </div>
 
-      {/* Empty / loading states for DB source */}
-      {source === 'database' && loading && (
-        <div className="p-10 text-center text-sm text-stone-400">Loading validation set…</div>
-      )}
-
-      {source === 'database' && !loading && !hasData && (
-        <div className="bg-white border border-[#F0E9B8] rounded-2xl p-8 text-center">
-          <Info className="w-6 h-6 text-[#C9971A] mx-auto mb-3" />
-          <p className="text-stone-700 font-medium mb-1">No validation pairs yet</p>
-          <p className="text-sm text-stone-500 max-w-md mx-auto mb-4">
-            A validation pair needs both a <strong>predicted_material</strong> (what AiG predicted)
-            and a confirmed <strong>xrf_material</strong> (ground truth) on the same record.
-            Run Classify, then confirm the real material after pXRF/excavation.
-          </p>
-          <button
-            onClick={() => setSource('demo')}
-            className="px-4 py-2 rounded-lg bg-[#F7F3D0] border border-[#E8DFA0] text-sm font-medium text-stone-700 hover:bg-[#F0E9B8] transition-colors"
-          >
-            Show demo evaluation instead
-          </button>
-          {dbError && <p className="text-xs text-red-600 mt-3">{dbError}</p>}
-        </div>
-      )}
-
-      {/* Metrics */}
-      {ev && (
-        <div className="space-y-6">
-          {/* Top stats */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Accuracy" value={pct(ev.accuracy)} sub={`${ev.n} validated objects`} accent />
-            <StatCard label="Macro F1" value={ev.perClass.macro.f1.toFixed(2)} sub="unweighted mean" />
-            <StatCard label="Weighted F1" value={ev.perClass.weighted.f1.toFixed(2)} sub="by support" />
-            <StatCard label="Materials" value={ev.labels.length} sub={ev.labels.join(', ')} />
-          </div>
-
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Confusion matrix */}
-          <div className="bg-white border border-[#F0E9B8] rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F0E9B8]">
-              <h2 className="text-sm font-semibold text-stone-700">Confusion Matrix</h2>
-              <p className="text-xs text-stone-400 mt-0.5">Rows = actual (pXRF) · Columns = predicted (AiG)</p>
-            </div>
-            <div className="p-5 overflow-x-auto">
-              <table className="text-sm border-collapse">
+          <div className="rounded-xl border border-amber-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-1 text-sm font-semibold text-stone-700">Confusion Matrix</h2>
+            <p className="mb-4 text-xs text-stone-400">Rows = actual (pXRF) · Columns = predicted (AiG)</p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
                 <thead>
                   <tr>
-                    <th className="p-2 text-stone-400 text-xs"></th>
-                    {ev.confusion.labels.map((l) => (
-                      <th key={l} className="p-2 text-xs font-semibold text-stone-500 capitalize">{l}</th>
+                    <th className="py-1 pr-3 text-left text-stone-400" />
+                    {labels.map(l => (
+                      <th key={l} className="px-2 py-1 text-center font-semibold text-stone-600">{l}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {ev.confusion.matrix.map((row, i) => {
-                    const rowTotal = row.reduce((s, v) => s + v, 0) || 1;
-                    return (
-                      <tr key={i}>
-                        <td className="p-2 text-xs font-semibold text-stone-500 capitalize text-right">
-                          {ev.confusion.labels[i]}
-                        </td>
-                        {row.map((v, j) => {
-                          const intensity = v / rowTotal;
-                          const isDiag = i === j;
-                          const bg = isDiag
-                            ? `rgba(22,163,74,${0.12 + intensity * 0.6})`
-                            : v > 0 ? `rgba(220,38,38,${0.10 + intensity * 0.5})` : 'transparent';
-                          return (
-                            <td key={j} className="p-0">
-                              <div
-                                className="w-12 h-10 flex items-center justify-center text-sm font-mono text-stone-700 rounded m-0.5"
-                                style={{ background: bg }}
-                              >
-                                {v}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
+                  {labels.map((actual, ri) => (
+                    <tr key={actual}>
+                      <td className="py-1 pr-3 font-semibold text-stone-600">{actual}</td>
+                      {labels.map((predicted, ci) => {
+                        const val = confusion.matrix[ri]?.[ci] ?? 0;
+                        const isCorrect = ri === ci;
+                        return (
+                          <td key={predicted} className={`px-2 py-1 text-center font-mono rounded ${
+                            isCorrect
+                              ? 'bg-amber-100 font-bold text-amber-800'
+                              : val > 0
+                                ? 'bg-red-50 text-red-600'
+                                : 'text-stone-300'
+                          }`}>
+                            {val}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
 
-          {/* Per-class metrics */}
-          <div className="bg-white border border-[#F0E9B8] rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F0E9B8]">
-              <h2 className="text-sm font-semibold text-stone-700">Per-Material Performance</h2>
-            </div>
-            <table className="w-full text-sm">
-              <thead className="bg-[#FDFBF0] text-stone-400 text-xs uppercase tracking-wide">
-                <tr>
-                  {['Material', 'Precision', 'Recall', 'F1', 'Support'].map((h) => (
-                    <th key={h} className="px-5 py-2.5 text-left font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F0E9B8]">
-                {ev.perClass.rows.map((r) => (
-                  <tr key={r.label} className="hover:bg-[#FDFBF0]">
-                    <td className="px-5 py-2.5 text-stone-700 font-medium capitalize">{r.label}</td>
-                    <td className="px-5 py-2.5 font-mono text-stone-600">{r.precision.toFixed(2)}</td>
-                    <td className="px-5 py-2.5 font-mono text-stone-600">{r.recall.toFixed(2)}</td>
-                    <td className="px-5 py-2.5 font-mono text-stone-600">{r.f1.toFixed(2)}</td>
-                    <td className="px-5 py-2.5 font-mono text-stone-400">{r.support}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Calibration */}
-          <div className="bg-white border border-[#F0E9B8] rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-[#F0E9B8]">
-              <h2 className="text-sm font-semibold text-stone-700">Confidence Calibration</h2>
-              <p className="text-xs text-stone-400 mt-0.5">
-                Well-calibrated = accuracy (gold) close to confidence (grey) in each bucket.
-              </p>
-            </div>
-            <div className="p-5 space-y-3">
-              {ev.calibration.map((b) => (
-                <div key={b.range} className="flex items-center gap-3">
-                  <span className="text-xs font-mono text-stone-400 w-16 shrink-0">{b.range}</span>
-                  <div className="flex-1 space-y-1">
-                    <div className="h-3 rounded-full bg-[#F7F3D0] overflow-hidden">
-                      <div className="h-full bg-[#C9971A]" style={{ width: pct(b.accuracy) }} />
-                    </div>
-                    <div className="h-2 rounded-full bg-[#F7F3D0] overflow-hidden">
-                      <div className="h-full bg-stone-400" style={{ width: pct(b.avgConfidence) }} />
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono text-stone-500 w-24 shrink-0 text-right">
-                    {b.count ? `${pct(b.accuracy)} acc` : '—'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {source === 'demo' && (
-            <p className="text-xs text-stone-400 text-center">
-              Showing built-in demo data — switch to “Database” once you have confirmed pXRF records.
+          {/* Confidence calibration */}
+          <div className="rounded-xl border border-amber-100 bg-white p-5 shadow-sm">
+            <h2 className="mb-1 text-sm font-semibold text-stone-700">Confidence Calibration</h2>
+            <p className="mb-4 text-xs text-stone-400">
+              Well-calibrated = accuracy (gold) close to confidence (grey) in each bucket.
             </p>
-          )}
+            {calibration.map((b, i) => (
+              <CalBar key={i} bucket={b} />
+            ))}
+            <div className="mt-3 flex items-center gap-4 text-xs text-stone-400">
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-amber-200" /> Confidence</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-amber-500 opacity-80" /> Accuracy</span>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Per-material table */}
+        <div className="rounded-xl border border-amber-100 bg-white p-5 shadow-sm">
+          <h2 className="mb-4 text-sm font-semibold text-stone-700">Per-Material Performance</h2>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-stone-100 text-xs uppercase tracking-wide text-stone-400">
+                {['Material', 'Precision', 'Recall', 'F1', 'Support'].map(h => (
+                  <th key={h} className="pb-2 pr-4 text-left">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-stone-50">
+              {perClass.rows.map(row => (
+                <tr key={row.label}>
+                  <td className="py-2 pr-4 font-medium text-stone-700 flex items-center gap-2">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: MATERIAL_COLORS[row.label] ?? '#6B7280' }} />
+                    {row.label}
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-stone-600">{f2(row.precision)}</td>
+                  <td className="py-2 pr-4 font-mono text-stone-600">{f2(row.recall)}</td>
+                  <td className="py-2 pr-4">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      row.f1 >= 0.8 ? 'bg-green-100 text-green-700'
+                      : row.f1 >= 0.6 ? 'bg-amber-100 text-amber-700'
+                      : 'bg-red-100 text-red-700'
+                    }`}>
+                      {f2(row.f1)}
+                    </span>
+                  </td>
+                  <td className="py-2 font-mono text-stone-400">{row.support}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t border-stone-200 text-xs text-stone-400">
+              <tr>
+                <td className="pt-2 font-medium">Macro avg</td>
+                <td colSpan={2} />
+                <td className="pt-2 font-mono font-semibold text-stone-600">{f2(perClass.macro)}</td>
+                <td className="pt-2 font-mono">{n}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+      </div>{/* end reportRef */}
     </div>
   );
 }
