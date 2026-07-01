@@ -90,6 +90,7 @@ export default function Validate() {
       setResult(evaluate(pairs));
       setSource('db');
     } catch (e) {
+      setResult(null);
       setError(e.message);
     } finally {
       setLoading(false);
@@ -118,12 +119,25 @@ export default function Validate() {
       link.href = canvas.toDataURL('image/png');
       link.click();
     } catch (e) {
+      setResult(null);
       console.error('Screenshot failed:', e);
     } finally {
       setSaving(false);
     }
   }
 
+ if (!result) return (
+  <div className="min-h-screen bg-[#FDFBF0] p-6">
+    <h1 className="text-2xl font-bold text-stone-800 mb-2">Validation &amp; Metrics</h1>
+    <div className="mt-8 rounded-xl border border-amber-100 bg-white p-10 text-center">
+      <p className="text-stone-500 text-sm">No validated records in database yet.</p>
+      <p className="text-stone-400 text-xs mt-1">Add confirmed pXRF excavation records via the Database page, then click "Database" here.</p>
+      <button onClick={loadDemo} className="mt-4 rounded-lg bg-amber-100 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-200">
+        View Demo Data instead
+      </button>
+    </div>
+  </div>
+);
   const { n, labels, accuracy: acc, confusion, perClass, calibration } = result;
 
   return (
