@@ -64,7 +64,7 @@ function CalBar({ bucket }) {
 export default function Validate() {
   const { isGuest } = useAuth();
   const [source, setSource]   = useState('demo');   // 'demo' | 'db'
-  const [result, setResult]   = useState(() => evaluate(DEMO_PAIRS));
+  const [result, setResult]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
   const [saving, setSaving]   = useState(false);
