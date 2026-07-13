@@ -16,8 +16,11 @@ import StatusBar        from '../components/StatusBar';
 
 const MATERIALS = ['ceramic', 'metal', 'bone', 'stone', 'void', 'other'];
 const PAGE_SIZE = 20;
+const RECORD_TYPES = ['gpr_xrf', 'xrf_only', 'gpr_only'];
+const MIN_VERIFIED_RECOMMENDED = 15; // per-material threshold used in KNN sufficiency check
 
 const EMPTY_FORM = {
+  record_type:    'gpr_xrf',
   site_id:        '',
   scan_filename:  '',
   depth_m:        '',
@@ -58,8 +61,10 @@ export default function Database() {
   const [error,       setError]      = useState(null);
   const [searchMat,   setSearchMat]  = useState('');
   const [searchSite,  setSearchSite] = useState('');
+  const [filterType,  setFilterType] = useState(''); // '' = all record types
   const [expandedId,  setExpandedId] = useState(null);
   const [deleteId,    setDeleteId]   = useState(null);
+  const [counts,      setCounts]     = useState([]); // from gpr_xrf_material_counts view
 
   // Add form
   const [form,        setForm]       = useState(EMPTY_FORM);
@@ -80,6 +85,7 @@ export default function Database() {
 
       if (searchMat)  query = query.ilike('xrf_material', `%${searchMat}%`);
       if (searchSite) query = query.ilike('site_id',      `%${searchSite}%`);
+      if (filterType) query = query.eq('record_type', filterType);
 
       const { data, error, count } = await query;
       if (error) throw error;
@@ -90,12 +96,24 @@ export default function Database() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchMat, searchSite]);
+  }, [page, searchMat, searchSite, filterType]);
+
+  // Per-material record counts (for KNN data-sufficiency indicator)
+  const fetchCounts = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from('gpr_xrf_material_counts').select('*');
+      if (error) throw error;
+      setCounts(data ?? []);
+    } catch (_e) {
+      // non-fatal — counts bar just won't render
+    }
+  }, []);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
+  useEffect(() => { fetchCounts(); }, [fetchCounts]);
 
   // Reset page when filters change
-  useEffect(() => { setPage(0); }, [searchMat, searchSite]);
+  useEffect(() => { setPage(0); }, [searchMat, searchSite, filterType]);
 
   // ── Delete record ──────────────────────────────────────────────────────────
   async function handleDelete(id) {
@@ -117,17 +135,21 @@ export default function Database() {
 
     try {
       if (!form.xrf_material) throw new Error('Material is required');
-      if (!form.depth_m)      throw new Error('Depth is required');
+      if (form.record_type !== 'xrf_only' && !form.depth_m)
+        throw new Error('Depth is required for GPR-paired records');
 
-      // Pull gpr_signature from passed detection if available
-      const gpr_signature = passedState?.detections?.[0]?.features
-        ? Array.from(passedState.detections[0].features)
-        : null;
+      // Pull gpr_signature from passed detection if available — never set for XRF-only entries
+      const gpr_signature = form.record_type === 'xrf_only'
+        ? null
+        : (passedState?.detections?.[0]?.features
+            ? Array.from(passedState.detections[0].features)
+            : null);
 
       const row = {
+        record_type:     form.record_type,
         site_id:         form.site_id        || null,
-        scan_filename:   form.scan_filename  || passedState?.filename || null,
-        depth_m:         parseFloat(form.depth_m)        || null,
+        scan_filename:   form.record_type === 'xrf_only' ? null : (form.scan_filename || passedState?.filename || null),
+        depth_m:         form.depth_m ? (parseFloat(form.depth_m) || null) : null,
         size_width_cm:   parseFloat(form.size_width_cm)  || null,
         size_height_cm:  parseFloat(form.size_height_cm) || null,
         xrf_material:    form.xrf_material,
@@ -145,6 +167,7 @@ export default function Database() {
       setSubmitMsg('Record saved successfully ✓');
       setForm(EMPTY_FORM);
       fetchRecords();
+      fetchCounts();
       setTimeout(() => { setTab('browse'); setSubmitMsg(''); }, 1500);
     } catch (e) {
       setSubmitError(e.message ?? 'Save failed');
@@ -189,6 +212,31 @@ export default function Database() {
       {tab === 'browse' && (
         <div className="space-y-4">
 
+          {/* Per-material KNN data-sufficiency bar */}
+          {counts.length > 0 && (
+            <div className="bg-white border border-[#F0E9B8] rounded-xl px-4 py-3">
+              <p className="text-xs text-stone-500 font-semibold mb-2">
+                Records per material · KNN reliability (target ≥{MIN_VERIFIED_RECOMMENDED})
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {counts.map((c) => {
+                  const sufficient = (c.total_records ?? 0) >= MIN_VERIFIED_RECOMMENDED;
+                  return (
+                    <span
+                      key={`${c.xrf_material}-${c.record_type}`}
+                      className={`text-xs font-mono px-2 py-1 rounded capitalize
+                        ${sufficient ? 'bg-[#F7F3D0] text-stone-700' : 'bg-red-50 text-red-700'}`}
+                      title={c.record_type}
+                    >
+                      {c.xrf_material ?? 'unlabelled'}: {c.total_records}
+                      {!sufficient && ' ⚠'}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Search + filter */}
           <div className="flex gap-3">
             <input
@@ -209,8 +257,19 @@ export default function Database() {
                          rounded-lg px-3 py-2 placeholder-stone-400 focus:outline-none
                          focus:border-[#C9971A]"
             />
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="bg-white border border-[#F0E9B8] text-stone-700 text-sm
+                         rounded-lg px-3 py-2 focus:outline-none focus:border-[#C9971A]"
+            >
+              <option value="">All types</option>
+              {RECORD_TYPES.map((t) => (
+                <option key={t} value={t}>{t.replace('_', ' ')}</option>
+              ))}
+            </select>
             <button
-              onClick={fetchRecords}
+              onClick={() => { fetchRecords(); fetchCounts(); }}
               className="px-4 py-2 bg-[#F7F3D0] hover:bg-[#F0E9B8] text-stone-700
                          text-sm font-semibold rounded-lg transition-colors"
             >
@@ -394,8 +453,34 @@ export default function Database() {
       {tab === 'add' && (
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-6 space-y-5">
           <p className="text-sm text-stone-500">
-            Add a confirmed excavation record. This data trains future k-NN classification.
+            Add a confirmed record. This data trains future k-NN classification and elemental fusion.
           </p>
+
+          {/* Record type toggle */}
+          <div>
+            <label className="text-xs text-stone-500 block mb-1">Record Type</label>
+            <div className="flex gap-2">
+              {RECORD_TYPES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setField('record_type', t)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg capitalize transition-colors
+                    ${form.record_type === t
+                      ? 'bg-[#C9971A] text-white'
+                      : 'bg-[#F7F3D0] text-stone-500 hover:text-stone-900'}`}
+                >
+                  {t.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+            {form.record_type === 'xrf_only' && (
+              <p className="text-xs text-stone-400 mt-1">
+                No GPR pairing yet — geochemistry-only entry (e.g. surface pXRF soil scan).
+                Excluded from KNN hyperbola matching but still contributes to elemental fusion training.
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
 
@@ -417,23 +502,27 @@ export default function Database() {
               </select>
             </div>
 
-            {/* Depth — required */}
-            <div>
-              <label className="text-xs text-stone-500 block mb-1">
-                Depth (m) <span className="text-red-600">*</span>
-              </label>
-              <input
-                type="number" step="0.01" placeholder="e.g. 0.85"
-                value={form.depth_m}
-                onChange={(e) => setField('depth_m', e.target.value)}
-                className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
-                           rounded-lg px-3 py-2 placeholder-stone-400"
-              />
-            </div>
+            {/* Depth — required unless XRF-only */}
+            {form.record_type !== 'xrf_only' && (
+              <div>
+                <label className="text-xs text-stone-500 block mb-1">
+                  Depth (m) <span className="text-red-600">*</span>
+                </label>
+                <input
+                  type="number" step="0.01" placeholder="e.g. 0.85"
+                  value={form.depth_m}
+                  onChange={(e) => setField('depth_m', e.target.value)}
+                  className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
+                             rounded-lg px-3 py-2 placeholder-stone-400"
+                />
+              </div>
+            )}
 
             {[
               { key: 'site_id',        label: 'Site ID',          placeholder: 'e.g. PENANG-2024-A' },
-              { key: 'scan_filename',  label: 'Scan Filename',    placeholder: 'e.g. survey_01.DZT' },
+              ...(form.record_type !== 'xrf_only'
+                ? [{ key: 'scan_filename', label: 'Scan Filename', placeholder: 'e.g. survey_01.DZT' }]
+                : []),
               { key: 'size_width_cm',  label: 'Width (cm)',       placeholder: 'e.g. 12.5',  type: 'number' },
               { key: 'size_height_cm', label: 'Height (cm)',      placeholder: 'e.g. 8.0',   type: 'number' },
               { key: 'gps_lat',        label: 'GPS Latitude',     placeholder: 'e.g. 5.4164',type: 'number' },
