@@ -34,3 +34,31 @@ Stored in Supabase (PostgreSQL).
 | format | text | DZT / dt2 / sgy |
 | scan_data | jsonb | Processed B-scan matrix |
 | created_at | timestamp | Upload time |
+
+---
+
+## v2 additions (see `migrations/001_aig_v2.sql`)
+
+### gpr_xrf_records — new columns (added, backward compatible)
+| Column | Type | Description |
+|--------|------|-------------|
+| dataset_id | text | Links GPR + XRF + AI results into one dataset |
+| material_id | text | Material identifier |
+| artifact_category | text | Artifact category |
+| ai_prediction | text | AI-predicted material |
+| confidence | float | Prediction confidence (0–1) |
+| gpr_features | jsonb | GPR embedding / feature vector (fusion input) |
+| xrf_features | jsonb | XRF elemental features (fusion input) |
+| fusion_output | jsonb | Late-fusion classifier output (scores, top matches) |
+| predicted_material / predicted_confidence | text / float | For the Validation page (RQ4) |
+
+### New tables
+| Table | Purpose |
+|-------|---------|
+| profiles | User directory for search/connect (id, email, display_name) |
+| datasets | Dataset grouping + visibility (private / connected / public) |
+| user_connections | Connect requests (requester_id, addressee_id, status) |
+| dataset_shares | Explicit per-user dataset shares |
+| dataset_messages | Live "Chat on Dataset" discussion (realtime enabled) |
+
+All new tables have Row Level Security policies; `gpr_scans` gains a `dataset_id` link.

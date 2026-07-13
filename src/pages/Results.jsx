@@ -14,6 +14,7 @@ import ObjectMap           from '../components/ObjectMap';
 import ResultCard          from '../components/ResultCard';
 import StatusBar           from '../components/StatusBar';
 import { generatePDFReport, exportCSV, exportJSON } from '../utils/exportResults';
+import { saveXrfRecords, saveXrfRecord, createDataset, getAuthUser, isRealUser } from '../lib/db';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,8 @@ export default function Results() {
   const [exportMsg,  setExportMsg]  = useState('');
   const [saveStatus, setSaveStatus] = useState({}); // { [det.id]: 'saving'|'saved'|'error' }
   const [filter,     setFilter]     = useState('all');
+  const [confirmation, setConfirmation] = useState(null); // real save receipt
+  const [saveError,    setSaveError]    = useState(null);
 
   // ── Guard ──────────────────────────────────────────────────────────────────
   if (!detections.length) {
@@ -119,44 +122,71 @@ export default function Results() {
   }
 
   // ── Save single record to Supabase ────────────────────────────────────────
-  async function handleSaveToDb(det) {
+  async function handleSaveToDb(det, ctx = {}) {
     setSaveStatus((s) => ({ ...s, [det.id]: 'saving' }));
     try {
-      const { error } = await supabase.from('gpr_xrf_records').insert({
-        scan_filename:   filename,
-        gpr_signature:   Array.from(det.features ?? []),
-        hyperbola_shape: det.hyperbola ?? null,
-        position_trace:  det.trace ?? null,
-        position_m:      det.position_m ?? null,
-        depth_ns:        det.depth_ns ?? null,
-        depth_m:         det.depth_m ?? null,
-        size_width_cm:   det.size_width_cm ?? null,
-        size_height_cm:  det.size_height_cm ?? null,
-        xrf_material:    det.material ?? det.label ?? null,
-        xrf_elements:    det.xrf_elements ?? null,
+      const { error } = await saveXrfRecord(det, {
+        datasetId: ctx.datasetId ?? confirmation?.datasetId ?? null,
+        filename,
       });
       if (error) throw error;
       setSaveStatus((s) => ({ ...s, [det.id]: 'saved' }));
+      return true;
     } catch (e) {
       setSaveStatus((s) => ({ ...s, [det.id]: 'error' }));
+      setSaveError(e.message ?? 'Save failed');
+      throw e; // propagate so batch counts are accurate
     }
   }
 
   // ── Save all to Supabase ───────────────────────────────────────────────────
   async function handleSaveAll() {
     setExporting(true);
+    setSaveError(null);
+    setConfirmation(null);
     setExportMsg('Saving all records…');
-    let saved = 0;
-    for (const det of detections) {
-      if (saveStatus[det.id] === 'saved') continue;
-      try {
-        await handleSaveToDb(det);
-        saved++;
-      } catch (_) {}
+    try {
+      const user = await getAuthUser();
+      if (!isRealUser(user)) {
+        throw new Error(
+          'You are in guest/demo mode (local only). Sign in with Google to save to the cloud database.'
+        );
+      }
+
+      // Group this save under one dataset so GPR + XRF + AI results are linked.
+      const { data: ds, error: dsErr, dataset_id } = await createDataset({
+        siteId: metadata?.site_id ?? null,
+        title: filename,
+        artifactCategory: null,
+        visibility: 'private',
+      });
+      if (dsErr) throw dsErr;
+
+      const toSave = detections.filter((d) => saveStatus[d.id] !== 'saved');
+      const { data, error, count } = await saveXrfRecords(toSave, { datasetId: dataset_id, filename });
+      if (error) throw error; // stop false "success"
+
+      // mark saved
+      setSaveStatus((s) => {
+        const next = { ...s };
+        for (const d of toSave) next[d.id] = 'saved';
+        return next;
+      });
+
+      setConfirmation({
+        datasetId: dataset_id,
+        user: user.email,
+        files: 'GPR + XRF',
+        count,
+        status: 'Stored',
+      });
+      setExportMsg('');
+    } catch (e) {
+      setSaveError(e.message ?? 'Save failed — nothing was written.');
+      setExportMsg('');
+    } finally {
+      setExporting(false);
     }
-    setExporting(false);
-    setExportMsg(`${saved} record${saved !== 1 ? 's' : ''} saved to database ✓`);
-    setTimeout(() => setExportMsg(''), 4000);
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -212,6 +242,41 @@ export default function Results() {
         <div className="bg-white border border-[#F0E9B8] rounded-lg px-4 py-2
                         text-sm text-stone-600 font-mono">
           {exportMsg}
+        </div>
+      )}
+
+      {/* Save error */}
+      {saveError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+          <span className="font-semibold">Save failed:</span> {saveError}
+        </div>
+      )}
+
+      {/* Save confirmation receipt */}
+      {confirmation && (
+        <div className="bg-white border border-[#C9971A] rounded-xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-[#C9971A] text-white text-xs">✓</span>
+            <h3 className="text-sm font-bold text-stone-800">Saved Successfully</h3>
+          </div>
+          <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+            <div>
+              <dt className="text-xs text-stone-400">Dataset ID</dt>
+              <dd className="font-mono font-semibold text-stone-800 break-all">{confirmation.datasetId}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-stone-400">User</dt>
+              <dd className="text-stone-700 truncate">{confirmation.user}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-stone-400">Files</dt>
+              <dd className="text-stone-700">{confirmation.files} ({confirmation.count} records)</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-stone-400">Database Status</dt>
+              <dd className="font-semibold text-[#C9971A]">{confirmation.status}</dd>
+            </div>
+          </dl>
         </div>
       )}
 

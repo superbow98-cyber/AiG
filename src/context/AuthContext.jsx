@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { ensureProfile } from '../lib/db'
 
 const AuthContext = createContext({})
 
@@ -33,6 +34,7 @@ export function AuthProvider({ children }) {
           setSession(session)
           setUser(session.user)
           setIsGuest(false)
+          ensureProfile(session.user)
         } else if (localStorage.getItem(GUEST_KEY) === '1') {
           setUser(GUEST_USER)
           setIsGuest(true)
@@ -57,6 +59,7 @@ export function AuthProvider({ children }) {
           setSession(session)
           setUser(session.user)
           setIsGuest(false)
+          ensureProfile(session.user)
         } else if (localStorage.getItem(GUEST_KEY) === '1') {
           setSession(null)
           setUser(GUEST_USER)

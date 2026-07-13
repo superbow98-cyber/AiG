@@ -14,6 +14,9 @@ import {
   Database,
   ClipboardCheck,
   Settings,
+  Layers,
+  Share2,
+  Users,
 } from 'lucide-react'
 
 const GROUPS = [
@@ -25,6 +28,7 @@ const GROUPS = [
     heading: 'Stage 1 · Survey',
     links: [
       { to: '/upload',     label: 'Upload',     Icon: Upload },
+      { to: '/batch',      label: 'Batch Upload', Icon: Layers },
       { to: '/preprocess', label: 'Preprocess', Icon: SlidersHorizontal },
       { to: '/visualise',  label: 'Visualise',  Icon: Eye },
       { to: '/detect',     label: 'Detect',     Icon: ScanSearch },
@@ -47,6 +51,13 @@ const GROUPS = [
   {
     heading: 'Stage 5 · Validate',
     links: [{ to: '/validate', label: 'Validation', Icon: ClipboardCheck }],
+  },
+  {
+    heading: 'Collaborate',
+    links: [
+      { to: '/connections', label: 'Connect Users', Icon: Users },
+      { to: '/datasets',    label: 'Datasets & Chat', Icon: Share2 },
+    ],
   },
   {
     heading: null,
