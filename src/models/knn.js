@@ -237,15 +237,25 @@ export function knnSearch(queryVec, database, k = 5, metric = 'cosine') {
   return scored.slice(0, k);
 }
 
+// Minimum confirmed DB records for a material class before KNN votes for that
+// class are considered data-sufficient (rather than a lucky match on a thin class).
+// Mirrors MIN_VERIFIED_RECOMMENDED in Database.jsx — keep both in sync.
+export const MIN_SAMPLES_PER_CLASS = 15;
+
 /**
  * Majority-vote material prediction from k-NN results.
  * Weights votes by similarity score.
  *
- * @param matches   output of knnSearch
- * @returns { material: string, confidence: number (0–1), votes: { [material]: number } }
+ * @param matches      output of knnSearch
+ * @param database     optional — full database array passed to knnSearch, used to
+ *                      count total records for the winning material (data-sufficiency check).
+ *                      If omitted, insufficientData is always false (can't be evaluated).
+ * @returns { material, confidence (0–1), votes, insufficientData, classSampleCount }
  */
-export function predictMaterial(matches) {
-  if (!matches?.length) return { material: 'unknown', confidence: 0, votes: {} };
+export function predictMaterial(matches, database = null) {
+  if (!matches?.length) {
+    return { material: 'unknown', confidence: 0, votes: {}, insufficientData: false, classSampleCount: 0 };
+  }
 
   const votes = {};
   let totalWeight = 0;
@@ -263,7 +273,15 @@ export function predictMaterial(matches) {
   }
 
   const confidence = totalWeight > 0 ? bestWeight / totalWeight : 0;
-  return { material: bestMaterial, confidence, votes };
+
+  let classSampleCount = null;
+  let insufficientData = false;
+  if (Array.isArray(database)) {
+    classSampleCount = database.filter((row) => row.xrf_material === bestMaterial).length;
+    insufficientData = classSampleCount < MIN_SAMPLES_PER_CLASS;
+  }
+
+  return { material: bestMaterial, confidence, votes, insufficientData, classSampleCount };
 }
 
 // ── findPeaks ────────────────────────────────────────────────────────────────
