@@ -92,7 +92,7 @@ export default function Classify() {
       try {
         const { data, error } = await supabase
           .from('gpr_xrf_records')
-          .select('id, xrf_material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, object_size_cm, site_id');
+          .select('id, xrf_material as material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id');
         if (error) throw error;
         setDbRecords(data ?? []);
       } catch (e) {
@@ -138,7 +138,7 @@ export default function Classify() {
           .map((r) => new Float32Array(r.gpr_signature));
         const labels = dbRecords
           .filter((r) => r.gpr_signature?.length > 0)
-          .map((r) => r.xrf_material ?? 'unknown');
+          .map((r) => r.material ?? 'unknown');
         if (featureVecs.length >= 2) {
           trainedModel = trainClassifier(trainType, featureVecs, labels);
         }
@@ -155,7 +155,7 @@ export default function Classify() {
 
         // k-NN match
         const matches = knnSearch(det.features, dbRecords, k, 'cosine');
-        const knnPred = predictMaterial(matches);
+        const knnPred = predictMaterial(matches, dbRecords);
 
         // Classifier predict (if model trained)
         let clsPred = null;
@@ -171,7 +171,7 @@ export default function Classify() {
           finalConfidence = ens.confidence;
           finalScores     = ens.scores;
         } else if (classifier === 'knn' || !clsPred) {
-          finalLabel      = knnPred.xrf_material;
+          finalLabel      = knnPred.material;
           finalConfidence = knnPred.confidence;
           finalScores     = knnPred.votes;
         } else {
@@ -182,7 +182,7 @@ export default function Classify() {
 
         // Top matches for UI
         const topMatches = matches.slice(0, 3).map((m) => ({
-          material:   m.xrf_material,
+          material:   m.material,
           similarity: m.similarity,
           record_id:  m.record_id,
           site_id:    m.record?.site_id ?? null,
@@ -338,20 +338,20 @@ export default function Classify() {
                 <div className="flex items-center gap-3">
                   <span
                     className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: matColor(res.xrf_material) }}
+                    style={{ backgroundColor: matColor(res.material) }}
                   />
                   <div>
                     <p className="text-stone-800 font-semibold text-sm">
                       Object {i + 1}
-                      {res.xrf_material && res.xrf_material !== 'unknown' && (
+                      {res.material && res.material !== 'unknown' && (
                         <span
                           className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full capitalize"
                           style={{
-                            backgroundColor: matColor(res.xrf_material) + '33',
-                            color: matColor(res.xrf_material),
+                            backgroundColor: matColor(res.material) + '33',
+                            color: matColor(res.material),
                           }}
                         >
-                          {res.xrf_material}
+                          {res.material}
                         </span>
                       )}
                     </p>
@@ -371,9 +371,9 @@ export default function Classify() {
               {/* Confidence bar */}
               <div className="px-5 pb-4">
                 <ConfidenceBar
-                  label={res.xrf_material ?? 'unknown'}
+                  label={res.material ?? 'unknown'}
                   confidence={res.confidence ?? 0}
-                  color={matColor(res.xrf_material)}
+                  color={matColor(res.material)}
                 />
               </div>
 
@@ -392,17 +392,17 @@ export default function Classify() {
                           <div key={mi} className="flex items-center gap-3">
                             <span
                               className="w-2 h-2 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: matColor(m.xrf_material) }}
+                              style={{ backgroundColor: matColor(m.material) }}
                             />
                             <span className="text-xs text-stone-600 capitalize w-20">
-                              {m.xrf_material}
+                              {m.material}
                             </span>
                             <div className="flex-1 h-1.5 bg-[#F7F3D0] rounded-full overflow-hidden">
                               <div
                                 className="h-full rounded-full"
                                 style={{
                                   width: `${Math.max(0, Math.min(1, m.similarity)) * 100}%`,
-                                  backgroundColor: matColor(m.xrf_material),
+                                  backgroundColor: matColor(m.material),
                                 }}
                               />
                             </div>
@@ -476,7 +476,7 @@ export default function Classify() {
                   {/* Object metrics */}
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: 'Size',      value: `${res.object_size_cm}×${res.size_height_cm}cm` },
+                      { label: 'Size',      value: `${res.size_width_cm}×${res.size_height_cm}cm` },
                       { label: 'DB matches', value: res.db_match_count ?? 0 },
                       { label: 'Amplitude', value: res.amplitude?.toFixed(1) ?? '—' },
                     ].map(({ label, value }) => (
