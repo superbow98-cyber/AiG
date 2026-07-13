@@ -33,7 +33,7 @@ export default function Reclassify() {
       setStatusMsg('Loading reference records…');
       const { data: refs, error: refErr } = await supabase
         .from('gpr_xrf_records')
-        .select('id, xrf_material as material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id')
+        .select('id, material:xrf_material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id')
         .not('xrf_material', 'is', null)
         .neq('xrf_material', 'unknown')
         .not('gpr_signature', 'is', null);
