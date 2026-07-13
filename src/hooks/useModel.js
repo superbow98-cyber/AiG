@@ -99,7 +99,7 @@ export function useModel(dbRecords = []) {
 
     // Always run k-NN — used as base for ensemble too
     const knnMatches = knnSearch(featArr, dbRecords, 5, 'cosine');
-    const knnResult  = predictMaterial(knnMatches);
+    const knnResult  = predictMaterial(knnMatches, dbRecords);
 
     if (type === 'knn') return { ...knnResult, source: 'knn' };
 
