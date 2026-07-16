@@ -18,7 +18,6 @@ import Validate from './pages/Validate'
 import BatchUpload from './pages/BatchUpload'
 import Connections from './pages/Connections'
 import Datasets from './pages/Datasets'
-import Reclassify from './pages/Reclassify'
 
 export default function App() {
   return (
@@ -44,7 +43,6 @@ export default function App() {
               <Route path="/batch"      element={<BatchUpload />} />
               <Route path="/connections" element={<Connections />} />
               <Route path="/datasets"   element={<Datasets />} />
-              <Route path="/reclassify" element={<Reclassify />} />
               <Route path="/settings"   element={<Settings />} />
             </Route>
           </Route>

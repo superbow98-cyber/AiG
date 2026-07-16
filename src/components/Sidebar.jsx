@@ -17,7 +17,6 @@ import {
   Layers,
   Share2,
   Users,
-  Wand2,
 } from 'lucide-react'
 
 const GROUPS = [
@@ -45,9 +44,8 @@ const GROUPS = [
   {
     heading: 'Stage 3–4 · Confirm & Map',
     links: [
-      { to: '/results',     label: 'Results',     Icon: FileBarChart },
-      { to: '/database',    label: 'Database',    Icon: Database },
-      { to: '/reclassify',  label: 'Reclassify',  Icon: Wand2 },
+      { to: '/results',  label: 'Results',  Icon: FileBarChart },
+      { to: '/database', label: 'Database', Icon: Database },
     ],
   },
   {

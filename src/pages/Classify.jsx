@@ -92,7 +92,7 @@ export default function Classify() {
       try {
         const { data, error } = await supabase
           .from('gpr_xrf_records')
-          .select('id, material:xrf_material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id');
+          .select('id, xrf_material as material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id');
         if (error) throw error;
         setDbRecords(data ?? []);
       } catch (e) {
