@@ -77,6 +77,7 @@ export default function XRFWorkspace() {
   const [result, setResult] = useState(null);
   const [dbRecords, setDbRecords] = useState([]);
   const [selectedRecordId, setSelectedRecordId] = useState('');
+  const [started, setStarted] = useState(false);
 
   const model = useMemo(() => getDefaultXRFMLP(), []);
 
@@ -138,14 +139,16 @@ export default function XRFWorkspace() {
             8 elements → MLP (8→64→32) → chemical embedding, fingerprint, feature importance
           </p>
         </div>
-        <button
-          onClick={sendToFusion}
-          disabled={!result}
-          className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
-          style={{ background: '#C9971A' }}
-        >
-          Send to Fusion Engine →
-        </button>
+        {started && (
+          <button
+            onClick={sendToFusion}
+            disabled={!result}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
+            style={{ background: '#C9971A' }}
+          >
+            Send to Fusion Engine →
+          </button>
+        )}
       </div>
 
       <div className="rounded-xl border p-3 text-xs" style={{ borderColor: '#E8DFA0', background: '#F7F3D0', color: '#92692A' }}>
@@ -155,6 +158,22 @@ export default function XRFWorkspace() {
         not a trained classifier's confidence in a material label.
       </div>
 
+      {!started ? (
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-10 flex flex-col items-center text-center gap-4">
+          <p className="text-sm text-stone-500 max-w-md">
+            This workspace lets you feed 8 XRF elemental readings into a small MLP and inspect the
+            resulting chemical fingerprint, feature importance, and embedding. Nothing runs until
+            you're ready.
+          </p>
+          <button
+            onClick={() => setStarted(true)}
+            className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+            style={{ background: '#C9971A' }}
+          >
+            View Demo
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Inputs */}
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-4">
@@ -263,6 +282,7 @@ export default function XRFWorkspace() {
           </div>
         </div>
       </div>
+      )}
 
       <p className="text-xs text-stone-400">
         Want to inspect a GPR anomaly's spatial embedding too? <Link to="/resnet-spatial" className="underline" style={{ color: '#C9971A' }}>Open ResNet-18 Spatial AI Module</Link>
