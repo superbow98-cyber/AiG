@@ -75,6 +75,7 @@ export default function FusionEngine() {
   const [xrfEmbedding, setXrfEmbedding] = useState(state.xrfEmbedding ?? null);
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
+  const [started, setStarted] = useState(false);
 
   // Fallback: if no ResNet embedding was passed but a detection+matrix was,
   // compute it right here so the page is usable standalone too.
@@ -134,6 +135,22 @@ export default function FusionEngine() {
         intended training entry point once labelled records exist.
       </div>
 
+      {!started ? (
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-10 flex flex-col items-center text-center gap-4">
+          <p className="text-sm text-stone-500 max-w-md">
+            This workspace combines a 128-D ResNet spatial embedding with a 32-D XRF chemical
+            embedding into a 160-D fused prediction. Nothing runs until you're ready.
+          </p>
+          <button
+            onClick={() => setStarted(true)}
+            className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
+            style={{ background: '#C9971A' }}
+          >
+            View Demo
+          </button>
+        </div>
+      ) : (
+      <>
       {/* Inputs status */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-4">
@@ -211,6 +228,8 @@ export default function FusionEngine() {
             </p>
           </div>
         </>
+      )}
+      </>
       )}
     </div>
   );
