@@ -16,7 +16,7 @@ import {
   getDefaultFusionEngine,
   MATERIAL_CLASSES,
 } from '../models/fusionEngine';
-import { getSpatialEmbedding, getDefaultResNet18 } from '../models/resnet18';
+import { getSpatialEmbedding, getDefaultResNet18, runResNet18 } from '../models/resnet18';
 import { getChemicalEmbedding, getDefaultXRFMLP, XRF_ELEMENTS, XRF_REFERENCE_RANGES } from '../models/xrfMLP';
 
 const MATERIAL_COLORS = {
@@ -98,6 +98,35 @@ export default function FusionEngine() {
 
   const fusionModel = useMemo(() => getDefaultFusionEngine(), []);
 
+  // Standalone demo helper: lets a visitor try the Fusion Engine directly,
+  // without first running Detect → ResNet-18 Spatial AI and XRF Workspace.
+  // Builds a synthetic 32×32 patch (radial ripple, not real GPR data) through
+  // the real ResNet-18 forward pass, and typical-range XRF elements through
+  // the real XRF MLP — same honesty convention as elsewhere in §7: real
+  // forward pass, clearly-labelled synthetic/demo input.
+  function generateSampleEmbeddings() {
+    const size = 32;
+    const patch = new Float32Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = (x - size / 2) / size;
+        const dy = (y - size / 2) / size;
+        const r = Math.sqrt(dx * dx + dy * dy);
+        patch[y * size + x] = Math.sin(6 * r) * Math.exp(-3 * r * r);
+      }
+    }
+    const resnetOut = runResNet18(getDefaultResNet18(), patch, size);
+    setResnetEmbedding(Array.from(resnetOut.embedding));
+
+    const sampleElements = XRF_ELEMENTS.reduce((acc, el) => {
+      const { typical } = XRF_REFERENCE_RANGES[el];
+      acc[el] = Number(((typical[0] + typical[1]) / 2).toFixed(2));
+      return acc;
+    }, {});
+    const xrfOut = getChemicalEmbedding(sampleElements, { model: getDefaultXRFMLP() });
+    setXrfEmbedding(Array.from(xrfOut.embedding));
+  }
+
   function runFusion() {
     if (!resnetEmbedding || !xrfEmbedding) return;
     setRunning(true);
@@ -176,6 +205,16 @@ export default function FusionEngine() {
           )}
         </div>
       </div>
+
+      {!ready && (
+        <button
+          onClick={generateSampleEmbeddings}
+          className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
+          style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+        >
+          Generate Sample Embeddings (try standalone)
+        </button>
+      )}
 
       <button
         onClick={runFusion}
