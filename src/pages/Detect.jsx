@@ -377,6 +377,28 @@ export default function Detect() {
         </div>
       )}
 
+      {/* AI Research Lab handoff — additive, does not change the detector above */}
+      {detections.length > 0 && (
+        <div className="flex justify-end gap-3">
+          <Link
+            to="/detection-lab"
+            state={{ matrix, metadata, detections, filename, scanId, velocity }}
+            className="text-sm font-medium px-4 py-2 rounded-xl border transition-colors"
+            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+          >
+            Compare with AI Detection Lab (YOLO/Faster R-CNN/Mask R-CNN) →
+          </Link>
+          <Link
+            to="/resnet-spatial"
+            state={{ matrix, metadata, detections, filename, scanId, velocity }}
+            className="text-sm font-medium px-4 py-2 rounded-xl border transition-colors"
+            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+          >
+            Analyze in AI Research Lab (ResNet-18) →
+          </Link>
+        </div>
+      )}
+
       {/* Object map */}
       <ObjectMap
         detections={detections}

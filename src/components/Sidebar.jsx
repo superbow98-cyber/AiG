@@ -17,6 +17,10 @@ import {
   Layers,
   Share2,
   Users,
+  Brain,
+  FlaskConical,
+  Combine,
+  BoxSelect,
 } from 'lucide-react'
 
 const GROUPS = [
@@ -51,6 +55,15 @@ const GROUPS = [
   {
     heading: 'Stage 5 · Validate',
     links: [{ to: '/validate', label: 'Validation', Icon: ClipboardCheck }],
+  },
+  {
+    heading: 'AI Research Lab',
+    links: [
+      { to: '/detection-lab',  label: 'AI Detection Lab',    Icon: BoxSelect },
+      { to: '/resnet-spatial', label: 'ResNet-18 Spatial AI', Icon: Brain },
+      { to: '/xrf-workspace',  label: 'XRF AI Workspace',     Icon: FlaskConical },
+      { to: '/fusion-engine',  label: 'Fusion Engine',        Icon: Combine },
+    ],
   },
   {
     heading: 'Collaborate',

@@ -18,6 +18,10 @@ import Validate from './pages/Validate'
 import BatchUpload from './pages/BatchUpload'
 import Connections from './pages/Connections'
 import Datasets from './pages/Datasets'
+import DetectionLab from './pages/DetectionLab'
+import ResNetSpatial from './pages/ResNetSpatial'
+import XRFWorkspace from './pages/XRFWorkspace'
+import FusionEngine from './pages/FusionEngine'
 
 export default function App() {
   return (
@@ -43,6 +47,12 @@ export default function App() {
               <Route path="/batch"      element={<BatchUpload />} />
               <Route path="/connections" element={<Connections />} />
               <Route path="/datasets"   element={<Datasets />} />
+
+              {/* AI Research Lab — additive, PhD methodology modules */}
+              <Route path="/detection-lab"  element={<DetectionLab />} />
+              <Route path="/resnet-spatial" element={<ResNetSpatial />} />
+              <Route path="/xrf-workspace"  element={<XRFWorkspace />} />
+              <Route path="/fusion-engine"  element={<FusionEngine />} />
               <Route path="/settings"   element={<Settings />} />
             </Route>
           </Route>
