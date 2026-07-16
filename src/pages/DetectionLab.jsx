@@ -20,6 +20,7 @@ import HyperbolaOverlay from '../components/HyperbolaOverlay';
 import BScanViewer from '../components/BScanViewer';
 import DepthScale from '../components/DepthScale';
 import { getMatrixRange } from '../utils/colormap';
+import { generateSyntheticScan } from '../utils/gprParser';
 import {
   runDetector,
   getDefaultDetector,
@@ -52,10 +53,11 @@ export default function DetectionLab() {
   const navigate = useNavigate();
   const state = location.state;
 
-  const matrix = state?.matrix ?? null;
-  const metadata = state?.metadata ?? null;
+  const [localScan, setLocalScan] = useState(null);
+  const matrix = state?.matrix ?? localScan?.matrix ?? null;
+  const metadata = state?.metadata ?? localScan?.metadata ?? null;
   const classicalDetections = state?.detections ?? [];
-  const filename = state?.filename ?? 'scan';
+  const filename = state?.filename ?? (localScan ? 'synthetic demo scan' : 'scan');
   const scanId = state?.scanId ?? null;
   const velocity = state?.velocity ?? 0.1;
 
@@ -109,9 +111,19 @@ export default function DetectionLab() {
   if (!matrix || !metadata) {
     return (
       <div className="min-h-full flex items-center justify-center" style={{ background: '#FDFBF0' }}>
-        <div className="text-center max-w-sm">
-          <p className="text-stone-500 mb-4">No scan loaded. Run detection on a scan first, then open it here.</p>
-          <Link to="/detect" className="text-sm font-medium" style={{ color: '#C9971A' }}>← Go to Detect</Link>
+        <div className="text-center max-w-sm space-y-4">
+          <p className="text-stone-500">No scan loaded. Run detection on a scan first, then open it here.</p>
+          <Link to="/detect" className="text-sm font-medium block" style={{ color: '#C9971A' }}>← Go to Detect</Link>
+          <div className="flex items-center gap-2 text-xs text-stone-400">
+            <div className="flex-1 h-px bg-[#F0E9B8]" /> or <div className="flex-1 h-px bg-[#F0E9B8]" />
+          </div>
+          <button
+            onClick={() => setLocalScan(generateSyntheticScan())}
+            className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
+            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+          >
+            Load Sample Scan (try standalone)
+          </button>
         </div>
       </div>
     );

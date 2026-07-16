@@ -16,6 +16,30 @@ import {
   getDefaultResNet18,
   RESNET_ARCH_SUMMARY,
 } from '../models/resnet18';
+import { generateSyntheticScan } from '../utils/gprParser';
+import { sampleToDepth } from '../utils/depthCalc';
+
+// Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
+// samples=300, dt_ns=0.2, dx_m=0.02 defaults) so a standalone "sample" detection
+// actually lands on a real synthetic hyperbola, not just background noise.
+function generateSampleDetections({ dt_ns = 0.2, dx_m = 0.02, velocity = 0.1 } = {}) {
+  const reflectors = [
+    { traceCenter: 50, depthSample: 80 },
+    { traceCenter: 120, depthSample: 150 },
+    { traceCenter: 165, depthSample: 60 },
+  ];
+  return reflectors.map(({ traceCenter, depthSample }, i) => ({
+    id: `sample-${i}`,
+    trace: traceCenter,
+    apexSample: depthSample,
+    halfWidthTraces: 8,
+    halfDepthSamples: 15,
+    position_m: traceCenter * dx_m,
+    depth_m: sampleToDepth(depthSample, dt_ns, velocity),
+    size_width_cm: 16 * dx_m * 100,
+    size_height_cm: sampleToDepth(30, dt_ns, velocity) * 100,
+  }));
+}
 
 function PatchCanvas({ patch, size }) {
   const canvasRef = useRef(null);
@@ -69,16 +93,31 @@ export default function ResNetSpatial() {
   const navigate = useNavigate();
   const state = location.state;
 
-  const matrix = state?.matrix ?? null;
-  const detections = state?.detections ?? [];
-  const metadata = state?.metadata ?? null;
-  const filename = state?.filename ?? 'scan';
+  const [localScan, setLocalScan] = useState(null);
+  const matrix = state?.matrix ?? localScan?.matrix ?? null;
+  const detections = state?.detections ?? localScan?.detections ?? [];
+  const metadata = state?.metadata ?? localScan?.metadata ?? null;
+  const filename = state?.filename ?? (localScan ? 'synthetic demo scan' : 'scan');
   const scanId = state?.scanId ?? null;
   const velocity = state?.velocity ?? 0.1;
+
+  function loadSampleScan() {
+    const scan = generateSyntheticScan();
+    setLocalScan({ ...scan, detections: generateSampleDetections({ dt_ns: scan.metadata.dt_ns, dx_m: scan.metadata.dx_m, velocity }) });
+  }
 
   const [selectedId, setSelectedId] = useState(detections[0]?.id ?? null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
+
+  // detections can populate after mount (via "Load Sample Scan"), so keep
+  // the selection in sync rather than only initialising it once.
+  useEffect(() => {
+    if (!detections.find((d) => d.id === selectedId) && detections.length > 0) {
+      setSelectedId(detections[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detections]);
 
   const model = useMemo(() => getDefaultResNet18(), []);
   const selectedDetection = detections.find((d) => d.id === selectedId) ?? null;
@@ -110,13 +149,23 @@ export default function ResNetSpatial() {
   if (!matrix || detections.length === 0) {
     return (
       <div className="min-h-full flex items-center justify-center" style={{ background: '#FDFBF0' }}>
-        <div className="text-center max-w-sm">
-          <p className="text-stone-500 mb-4">
+        <div className="text-center max-w-sm space-y-4">
+          <p className="text-stone-500">
             No detections loaded. Run detection on a scan first, then open it here.
           </p>
-          <Link to="/detect" className="text-sm font-medium" style={{ color: '#C9971A' }}>
+          <Link to="/detect" className="text-sm font-medium block" style={{ color: '#C9971A' }}>
             ← Go to Detect
           </Link>
+          <div className="flex items-center gap-2 text-xs text-stone-400">
+            <div className="flex-1 h-px bg-[#F0E9B8]" /> or <div className="flex-1 h-px bg-[#F0E9B8]" />
+          </div>
+          <button
+            onClick={loadSampleScan}
+            className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
+            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+          >
+            Load Sample Scan (try standalone)
+          </button>
         </div>
       </div>
     );
