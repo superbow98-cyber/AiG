@@ -75,7 +75,13 @@ export default function FusionEngine() {
   const [xrfEmbedding, setXrfEmbedding] = useState(state.xrfEmbedding ?? null);
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
-  const [started, setStarted] = useState(false);
+  // If we arrived here via navigation with real inputs already in hand
+  // (from ResNet-18 Spatial AI and/or XRF Workspace's "Send to Fusion"),
+  // skip the "View Demo" gate entirely — that's what looked like a blank
+  // page: real data was loaded into state but the gate screen still showed.
+  const [started, setStarted] = useState(
+    Boolean(state.resnetEmbedding || state.xrfEmbedding || (state.matrix && state.detection) || state.elements)
+  );
 
   // Fallback: if no ResNet embedding was passed but a detection+matrix was,
   // compute it right here so the page is usable standalone too.
