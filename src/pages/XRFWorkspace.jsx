@@ -90,6 +90,7 @@ export default function XRFWorkspace() {
   const [csvFilename, setCsvFilename] = useState(null);
   const [csvError, setCsvError] = useState(null);
   const [selectedCsvRowId, setSelectedCsvRowId] = useState('');
+  const [dragOver, setDragOver] = useState(false);
   const csvInputRef = useRef(null);
 
   function handleCsvFile(file) {
@@ -106,9 +107,34 @@ export default function XRFWorkspace() {
       if (error) { setCsvError(error); return; }
       setCsvRows(rows);
       setCsvFilename(file.name);
+      setStarted(true); // reveal the main view immediately, same as §12a's upload→auto-detect→reveal flow
     };
     reader.onerror = () => setCsvError('Could not read the file.');
     reader.readAsText(file);
+  }
+
+  function onCsvDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleCsvFile(file);
+  }
+
+  // "Try a sample" path — same role as ResNet-18's loadSampleScan(): clearly
+  // synthetic values (typical range midpoint ± small jitter), not real data,
+  // labelled as a sample in the UI. Reveals the main view but does NOT
+  // auto-run the MLP — user still clicks "Run XRF MLP" themselves.
+  function loadSampleReading() {
+    const sample = XRF_ELEMENTS.reduce((acc, el) => {
+      const { typical } = XRF_REFERENCE_RANGES[el];
+      const mid = (typical[0] + typical[1]) / 2;
+      const jitter = (typical[1] - typical[0]) * 0.15 * (Math.random() * 2 - 1);
+      acc[el] = Number(Math.max(0, mid + jitter).toFixed(2));
+      return acc;
+    }, {});
+    setElements(sample);
+    setResult(null);
+    setStarted(true);
   }
 
   function loadCsvRow(id) {
@@ -201,19 +227,69 @@ export default function XRFWorkspace() {
       </div>
 
       {!started ? (
-        <div className="bg-white border border-[#F0E9B8] rounded-xl p-10 flex flex-col items-center text-center gap-4">
-          <p className="text-sm text-stone-500 max-w-md">
-            This workspace lets you feed 8 XRF elemental readings into a small MLP and inspect the
-            resulting chemical fingerprint, feature importance, and embedding. Nothing runs until
-            you're ready.
-          </p>
-          <button
-            onClick={() => setStarted(true)}
-            className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
-            style={{ background: '#C9971A' }}
-          >
-            View Demo
-          </button>
+        <div className="min-h-full flex items-center justify-center p-6" style={{ background: '#FDFBF0' }}>
+          <div className="text-center max-w-sm w-full space-y-4">
+            <p className="text-stone-500">
+              Feed 8 XRF elemental readings into a small MLP and inspect the resulting chemical
+              fingerprint, feature importance, and embedding. Upload a CSV below, or try a sample.
+            </p>
+
+            <div className="text-left">
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onCsvDrop}
+                onClick={() => csvInputRef.current?.click()}
+                className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${
+                  dragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <UploadCloud className="h-10 w-10 text-gray-400" />
+                <p className="text-sm font-medium text-gray-700">
+                  Drag &amp; drop a CSV here, or click to browse
+                </p>
+                <p className="text-xs text-gray-500">
+                  One row per reading — header names Fe, Cu, Pb, Ca, Si, Al, Ti, Zn
+                </p>
+                <input
+                  ref={csvInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".csv"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) handleCsvFile(e.target.files[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+
+              {csvError && (
+                <div className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 p-3 mt-2 text-sm text-red-700">
+                  <FileWarning className="h-4 w-4 flex-shrink-0" />
+                  <span>{csvError}</span>
+                </div>
+              )}
+
+              <div className="text-center mt-3">
+                <button type="button" onClick={loadSampleReading}
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">
+                  Or try a sample XRF reading
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-stone-400">
+              <div className="flex-1 h-px bg-[#F0E9B8]" /> or <div className="flex-1 h-px bg-[#F0E9B8]" />
+            </div>
+
+            <button
+              onClick={() => setStarted(true)}
+              className="text-sm font-medium block w-full"
+              style={{ color: '#C9971A' }}
+            >
+              Enter values manually →
+            </button>
+          </div>
         </div>
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -222,8 +298,13 @@ export default function XRFWorkspace() {
           <div>
             <label className="text-xs text-stone-400 block mb-1">Upload XRF readings (.csv)</label>
             <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onCsvDrop}
               onClick={() => csvInputRef.current?.click()}
-              className="flex items-center gap-2 rounded-lg border border-dashed border-[#E8DFA0] bg-[#FDFBF0] px-3 py-2.5 text-xs text-stone-500 cursor-pointer hover:border-[#C9971A] transition-colors"
+              className={`flex items-center gap-2 rounded-lg border border-dashed px-3 py-2.5 text-xs cursor-pointer transition-colors ${
+                dragOver ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-[#E8DFA0] bg-[#FDFBF0] text-stone-500 hover:border-[#C9971A]'
+              }`}
             >
               <UploadCloud className="h-4 w-4 flex-shrink-0" style={{ color: '#C9971A' }} />
               <span>
