@@ -13,14 +13,17 @@
 //
 // Purely additive — does not touch Detect.jsx's own detector or state.
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import StatusBar from '../components/StatusBar';
 import HyperbolaOverlay from '../components/HyperbolaOverlay';
 import BScanViewer from '../components/BScanViewer';
 import DepthScale from '../components/DepthScale';
+import FileLoader from '../components/FileLoader';
+import useGPRData from '../hooks/useGPRData';
 import { getMatrixRange } from '../utils/colormap';
 import { generateSyntheticScan } from '../utils/gprParser';
+import { quickAutoDetect } from '../utils/autoDetect';
 import {
   runDetector,
   getDefaultDetector,
@@ -56,10 +59,56 @@ export default function DetectionLab() {
   const [localScan, setLocalScan] = useState(null);
   const matrix = state?.matrix ?? localScan?.matrix ?? null;
   const metadata = state?.metadata ?? localScan?.metadata ?? null;
-  const classicalDetections = state?.detections ?? [];
-  const filename = state?.filename ?? (localScan ? 'synthetic demo scan' : 'scan');
+  const classicalDetections = state?.detections ?? localScan?.detections ?? [];
+  const filename = state?.filename ?? (localScan ? localScan.filename ?? 'synthetic demo scan' : 'scan');
   const scanId = state?.scanId ?? null;
   const velocity = state?.velocity ?? 0.1;
+
+  // ── Standalone upload — same pattern as ResNet-18 Spatial AI (§12a):
+  // reuse FileLoader.jsx to parse a real GPR file, then auto-run the shared
+  // quick classical detector (utils/autoDetect.js) so classicalDetections is
+  // populated too (not just matrix/metadata), giving the classical-vs-AI
+  // comparison panel something real to compare against. No new detection
+  // logic here — reuses the exact function Detect.jsx and ResNetSpatial.jsx
+  // already use. ──
+  const uploadHook = useGPRData();
+  const { scan: uploadedScan, setScan: setUploadedScan } = uploadHook;
+  const [autoDetecting, setAutoDetecting] = useState(false);
+  const [autoDetectError, setAutoDetectError] = useState(null);
+  const processedFileRef = useRef(null);
+
+  useEffect(() => {
+    if (state?.matrix) return; // arrived via Detect.jsx — nothing to auto-detect
+    if (!uploadedScan.matrix || !uploadedScan.metadata) return;
+    if (processedFileRef.current === uploadedScan.filename) return; // already processed
+    processedFileRef.current = uploadedScan.filename;
+
+    setAutoDetecting(true);
+    setAutoDetectError(null);
+    setTimeout(() => {
+      try {
+        const dets = quickAutoDetect(
+          uploadedScan.matrix,
+          uploadedScan.metadata,
+          uploadedScan.velocity ?? velocity,
+          uploadedScan.metadata.dx_m
+        );
+        // Even with zero classical detections, still load the scan so the
+        // AI detector can run on it — classical comparison just stays empty.
+        setLocalScan({
+          matrix: uploadedScan.matrix,
+          metadata: uploadedScan.metadata,
+          filename: uploadedScan.filename,
+          detections: dets,
+        });
+      } catch (err) {
+        setAutoDetectError(err.message ?? 'Auto-detection failed on this file.');
+      } finally {
+        setAutoDetecting(false);
+      }
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadedScan.matrix, uploadedScan.metadata, uploadedScan.filename]);
 
   const [method, setMethod] = useState('yolo');
   const [confThreshold, setConfThreshold] = useState(0.5);
@@ -110,20 +159,32 @@ export default function DetectionLab() {
 
   if (!matrix || !metadata) {
     return (
-      <div className="min-h-full flex items-center justify-center" style={{ background: '#FDFBF0' }}>
-        <div className="text-center max-w-sm space-y-4">
-          <p className="text-stone-500">No scan loaded. Run detection on a scan first, then open it here.</p>
-          <Link to="/detect" className="text-sm font-medium block" style={{ color: '#C9971A' }}>← Go to Detect</Link>
+      <div className="min-h-full flex items-center justify-center p-6" style={{ background: '#FDFBF0' }}>
+        <div className="text-center max-w-sm w-full space-y-4">
+          <p className="text-stone-500">
+            No scan loaded. Upload a GPR file below, run detection on a scan first via Detect, or try a sample.
+          </p>
+
+          <div className="text-left">
+            <FileLoader setScan={setUploadedScan} loadDemo={() => setLocalScan(generateSyntheticScan())} scan={uploadedScan} />
+          </div>
+
+          {autoDetecting && (
+            <p className="text-xs text-stone-500">Parsing file &amp; auto-detecting anomalies…</p>
+          )}
+          {autoDetectError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs p-3 text-left">
+              {autoDetectError}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 text-xs text-stone-400">
             <div className="flex-1 h-px bg-[#F0E9B8]" /> or <div className="flex-1 h-px bg-[#F0E9B8]" />
           </div>
-          <button
-            onClick={() => setLocalScan(generateSyntheticScan())}
-            className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
-            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
-          >
-            Load Sample Scan (try standalone)
-          </button>
+
+          <Link to="/detect" className="text-sm font-medium block" style={{ color: '#C9971A' }}>
+            ← Go to Detect (full pipeline, adjustable thresholds)
+          </Link>
         </div>
       </div>
     );
