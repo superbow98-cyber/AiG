@@ -25,6 +25,7 @@ import { generateSyntheticScan } from '../utils/gprParser';
 import { sampleToDepth } from '../utils/depthCalc';
 import { getMatrixRange } from '../utils/colormap';
 import { quickAutoDetect } from '../utils/autoDetect';
+import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
 
 // Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
 // samples=300, dt_ns=0.2, dx_m=0.02 defaults) so a standalone "sample" detection
@@ -98,6 +99,7 @@ function EmbeddingStrip({ embedding }) {
 export default function ResNetSpatial() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { setResnet } = useFusionWorkspace();
   const state = location.state;
 
   const [localScan, setLocalScan] = useState(null);
@@ -232,11 +234,22 @@ export default function ResNetSpatial() {
 
   function sendToFusion() {
     if (!result) return;
+    const resnetData = {
+      embedding: Array.from(result.embedding),
+      patch: Array.from(result.patch),
+      patchSize: result.size,
+      detection: selectedDetection,
+      filename, scanId,
+    };
+    // Write to the shared, navigation-independent store FIRST so that even if
+    // the user later leaves Fusion Engine to fill in the XRF half and comes
+    // back, this ResNet embedding is still there (fixes "only fuses one").
+    setResnet(resnetData);
     navigate('/fusion-engine', {
       state: {
-        resnetEmbedding: Array.from(result.embedding),
-        resnetPatch: Array.from(result.patch),
-        resnetPatchSize: result.size,
+        resnetEmbedding: resnetData.embedding,
+        resnetPatch: resnetData.patch,
+        resnetPatchSize: resnetData.patchSize,
         detection: selectedDetection,
         matrix, metadata, filename, scanId, velocity,
         detections,

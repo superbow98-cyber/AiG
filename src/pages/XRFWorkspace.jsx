@@ -17,6 +17,7 @@ import {
   getDefaultXRFMLP,
 } from '../models/xrfMLP';
 import { parseXRFCsv } from '../utils/xrfCsv';
+import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
 
 const DEFAULT_ELEMENTS = XRF_ELEMENTS.reduce((acc, el) => {
   const { typical } = XRF_REFERENCE_RANGES[el];
@@ -74,6 +75,7 @@ export default function XRFWorkspace() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state ?? {};
+  const { setXrf } = useFusionWorkspace();
 
   const [elements, setElements] = useState(state.elements ?? DEFAULT_ELEMENTS);
   const [result, setResult] = useState(null);
@@ -186,10 +188,19 @@ export default function XRFWorkspace() {
 
   function sendToFusion() {
     if (!result) return;
+    const xrfData = { embedding: Array.from(result.embedding), elements };
+    // Write to the shared, navigation-independent store FIRST. Previously,
+    // navigating here directly (not via Fusion Engine's "Not loaded" link)
+    // meant `state` was empty, so this navigate() call below would carry
+    // ONLY the xrfEmbedding — silently discarding any ResNet embedding the
+    // user had already loaded on the Fusion Engine page in an earlier visit.
+    // setXrf keeps that ResNet half intact regardless of how this page was
+    // reached.
+    setXrf(xrfData);
     navigate('/fusion-engine', {
       state: {
         ...state,
-        xrfEmbedding: Array.from(result.embedding),
+        xrfEmbedding: xrfData.embedding,
         elements,
       },
     });

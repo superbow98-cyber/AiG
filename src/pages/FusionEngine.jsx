@@ -18,6 +18,7 @@ import {
 } from '../models/fusionEngine';
 import { getSpatialEmbedding, getDefaultResNet18, runResNet18 } from '../models/resnet18';
 import { getChemicalEmbedding, getDefaultXRFMLP, XRF_ELEMENTS, XRF_REFERENCE_RANGES } from '../models/xrfMLP';
+import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
 
 const MATERIAL_COLORS = {
   metal: '#a8a29e', ceramic: '#c2703d', lithic: '#78716c', soil: '#8b6f3f',
@@ -70,18 +71,56 @@ function PredictionCard({ title, prediction, subtitle }) {
 export default function FusionEngine() {
   const location = useLocation();
   const state = location.state ?? {};
+  // Shared, navigation-independent store (see context/FusionWorkspaceContext.jsx).
+  // This is the fix for "why does it only fuse one": previously this page's
+  // resnetEmbedding/xrfEmbedding lived only in local useState seeded from
+  // location.state, so leaving this page to load the *other* modality and
+  // coming back (a fresh navigate() with only the new modality in state)
+  // silently discarded whatever had been loaded before. The workspace store
+  // holds both halves independently and survives that round trip, plus a
+  // hard refresh (backed by sessionStorage).
+  const workspace = useFusionWorkspace();
 
-  const [resnetEmbedding, setResnetEmbedding] = useState(state.resnetEmbedding ?? null);
-  const [xrfEmbedding, setXrfEmbedding] = useState(state.xrfEmbedding ?? null);
+  const [resnetEmbedding, setResnetEmbedding] = useState(
+    state.resnetEmbedding ?? workspace.resnet?.embedding ?? null
+  );
+  const [xrfEmbedding, setXrfEmbedding] = useState(
+    state.xrfEmbedding ?? workspace.xrf?.embedding ?? null
+  );
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
   // If we arrived here via navigation with real inputs already in hand
   // (from ResNet-18 Spatial AI and/or XRF Workspace's "Send to Fusion"),
-  // skip the "View Demo" gate entirely — that's what looked like a blank
-  // page: real data was loaded into state but the gate screen still showed.
+  // or the shared store already has data from an earlier visit this
+  // session, skip the "View Demo" gate entirely — that's what looked like
+  // a blank page: real data was loaded but the gate screen still showed.
   const [started, setStarted] = useState(
-    Boolean(state.resnetEmbedding || state.xrfEmbedding || (state.matrix && state.detection) || state.elements)
+    Boolean(
+      state.resnetEmbedding || state.xrfEmbedding ||
+      (state.matrix && state.detection) || state.elements ||
+      workspace.resnet || workspace.xrf
+    )
   );
+
+  // Whenever this page is navigated to with a fresh embedding in
+  // location.state, mirror it into the shared store too (belt-and-braces —
+  // the sending pages already do this, but this covers any other caller).
+  useEffect(() => {
+    if (state.resnetEmbedding) {
+      workspace.setResnet({
+        embedding: state.resnetEmbedding,
+        patch: state.resnetPatch,
+        patchSize: state.resnetPatchSize,
+        detection: state.detection,
+        filename: state.filename,
+        scanId: state.scanId,
+      });
+    }
+    if (state.xrfEmbedding) {
+      workspace.setXrf({ embedding: state.xrfEmbedding, elements: state.elements });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.resnetEmbedding, state.xrfEmbedding]);
 
   // Fallback: if no ResNet embedding was passed but a detection+matrix was,
   // compute it right here so the page is usable standalone too.
@@ -89,6 +128,7 @@ export default function FusionEngine() {
     if (!resnetEmbedding && state.matrix && state.detection) {
       const out = getSpatialEmbedding(state.matrix, state.detection, { size: 32, model: getDefaultResNet18() });
       setResnetEmbedding(Array.from(out.embedding));
+      workspace.setResnet({ embedding: Array.from(out.embedding), detection: state.detection });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -98,6 +138,7 @@ export default function FusionEngine() {
     if (!xrfEmbedding && state.elements) {
       const out = getChemicalEmbedding(state.elements, { model: getDefaultXRFMLP() });
       setXrfEmbedding(Array.from(out.embedding));
+      workspace.setXrf({ embedding: Array.from(out.embedding), elements: state.elements });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -122,7 +163,9 @@ export default function FusionEngine() {
       }
     }
     const resnetOut = runResNet18(getDefaultResNet18(), patch, size);
-    setResnetEmbedding(Array.from(resnetOut.embedding));
+    const resnetVec = Array.from(resnetOut.embedding);
+    setResnetEmbedding(resnetVec);
+    workspace.setResnet({ embedding: resnetVec, sample: true });
 
     const sampleElements = XRF_ELEMENTS.reduce((acc, el) => {
       const { typical } = XRF_REFERENCE_RANGES[el];
@@ -130,7 +173,18 @@ export default function FusionEngine() {
       return acc;
     }, {});
     const xrfOut = getChemicalEmbedding(sampleElements, { model: getDefaultXRFMLP() });
-    setXrfEmbedding(Array.from(xrfOut.embedding));
+    const xrfVec = Array.from(xrfOut.embedding);
+    setXrfEmbedding(xrfVec);
+    workspace.setXrf({ embedding: xrfVec, elements: sampleElements, sample: true });
+  }
+
+  // Lets the user intentionally start over — needed now that both halves
+  // persist across page visits and refreshes via the shared store.
+  function clearInputs() {
+    setResnetEmbedding(null);
+    setXrfEmbedding(null);
+    setResult(null);
+    workspace.clearAll();
   }
 
   function runFusion() {
@@ -212,24 +266,35 @@ export default function FusionEngine() {
         </div>
       </div>
 
-      {!ready && (
-        <button
-          onClick={generateSampleEmbeddings}
-          className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
-          style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
-        >
-          Generate Sample Embeddings (try standalone)
-        </button>
-      )}
+      <div className="flex flex-wrap items-center gap-3">
+        {!ready && (
+          <button
+            onClick={generateSampleEmbeddings}
+            className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
+            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+          >
+            Generate Sample Embeddings (try standalone)
+          </button>
+        )}
 
-      <button
-        onClick={runFusion}
-        disabled={!ready || running}
-        className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
-        style={{ background: '#C9971A' }}
-      >
-        {running ? 'Running fusion…' : 'Run Fusion Prediction'}
-      </button>
+        <button
+          onClick={runFusion}
+          disabled={!ready || running}
+          className="px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
+          style={{ background: '#C9971A' }}
+        >
+          {running ? 'Running fusion…' : 'Run Fusion Prediction'}
+        </button>
+
+        {(resnetEmbedding || xrfEmbedding) && (
+          <button
+            onClick={clearInputs}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-stone-500 hover:text-stone-700 underline decoration-dotted"
+          >
+            Clear inputs
+          </button>
+        )}
+      </div>
 
       {result && (
         <>
