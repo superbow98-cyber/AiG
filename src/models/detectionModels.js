@@ -381,6 +381,12 @@ export function runDetector(matrix, metadata, {
       halfDepthSamples,
       position_m: traceCenter * dx_m,
       depth_m: sampleToDepth(sampleCenter, metadata?.dt_ns ?? 1, velocity),
+      // Same formula as utils/autoDetect.js buildDetections() and
+      // deepLearningLoader.js _maskToDetections() — was missing here, which
+      // is why ResNet-18's "Width:"/"Height:" fields render blank for any
+      // detection sent over from AI Detection Lab.
+      size_width_cm:  +(halfWidthTraces  * 2 * dx_m * 100).toFixed(1),
+      size_height_cm: +(halfDepthSamples * 2 * (metadata?.dt_ns ?? 1) * velocity / 2 * 100).toFixed(1),
       label: DETECTOR_CLASSES[k.classIdx],
       confidence: k.score,
       classProbs: k.classProbs,
