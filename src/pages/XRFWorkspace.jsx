@@ -6,8 +6,9 @@
 // Reads:  optional location.state.detection / scan info (for context header only)
 // Passes: → /fusion-engine ({ xrfEmbedding, elements, ...scan info })
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { UploadCloud, FileWarning, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import {
   XRF_ELEMENTS,
@@ -15,6 +16,7 @@ import {
   getChemicalEmbedding,
   getDefaultXRFMLP,
 } from '../models/xrfMLP';
+import { parseXRFCsv } from '../utils/xrfCsv';
 
 const DEFAULT_ELEMENTS = XRF_ELEMENTS.reduce((acc, el) => {
   const { typical } = XRF_REFERENCE_RANGES[el];
@@ -78,6 +80,46 @@ export default function XRFWorkspace() {
   const [dbRecords, setDbRecords] = useState([]);
   const [selectedRecordId, setSelectedRecordId] = useState('');
   const [started, setStarted] = useState(false);
+
+  // ── CSV upload: one row = one XRF reading. Parsed client-side via
+  // utils/xrfCsv.js (case-insensitive match against XRF_ELEMENTS), then
+  // picked from a dropdown — same pattern as the existing "Load from
+  // database" select below. Purely additive: manual entry and the
+  // database dropdown are untouched. ──
+  const [csvRows, setCsvRows] = useState([]);
+  const [csvFilename, setCsvFilename] = useState(null);
+  const [csvError, setCsvError] = useState(null);
+  const [selectedCsvRowId, setSelectedCsvRowId] = useState('');
+  const csvInputRef = useRef(null);
+
+  function handleCsvFile(file) {
+    setCsvError(null);
+    setCsvRows([]);
+    setSelectedCsvRowId('');
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setCsvError('Please upload a .csv file.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, error } = parseXRFCsv(String(reader.result));
+      if (error) { setCsvError(error); return; }
+      setCsvRows(rows);
+      setCsvFilename(file.name);
+    };
+    reader.onerror = () => setCsvError('Could not read the file.');
+    reader.readAsText(file);
+  }
+
+  function loadCsvRow(id) {
+    setSelectedCsvRowId(id);
+    const row = csvRows.find((r) => r.id === id);
+    if (row) {
+      const merged = { ...DEFAULT_ELEMENTS, ...row.elements };
+      setElements(merged);
+      setResult(null);
+    }
+  }
 
   const model = useMemo(() => getDefaultXRFMLP(), []);
 
@@ -177,6 +219,57 @@ export default function XRFWorkspace() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Inputs */}
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-4">
+          <div>
+            <label className="text-xs text-stone-400 block mb-1">Upload XRF readings (.csv)</label>
+            <div
+              onClick={() => csvInputRef.current?.click()}
+              className="flex items-center gap-2 rounded-lg border border-dashed border-[#E8DFA0] bg-[#FDFBF0] px-3 py-2.5 text-xs text-stone-500 cursor-pointer hover:border-[#C9971A] transition-colors"
+            >
+              <UploadCloud className="h-4 w-4 flex-shrink-0" style={{ color: '#C9971A' }} />
+              <span>
+                {csvFilename ? <strong className="text-stone-700">{csvFilename}</strong> : 'Click to browse — one row per reading'}
+              </span>
+              <input
+                ref={csvInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleCsvFile(e.target.files[0]);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+
+            {csvError && (
+              <div className="flex items-start gap-1.5 mt-1.5 text-xs text-red-700">
+                <FileWarning className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <span>{csvError}</span>
+              </div>
+            )}
+
+            {csvRows.length > 0 && !csvError && (
+              <>
+                <div className="flex items-center gap-1.5 mt-1.5 text-xs text-green-700">
+                  <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span>{csvRows.length} reading{csvRows.length === 1 ? '' : 's'} parsed.</span>
+                </div>
+                <select
+                  value={selectedCsvRowId}
+                  onChange={(e) => loadCsvRow(e.target.value)}
+                  className="w-full mt-2 bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="">— select a row —</option>
+                  {csvRows.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}{r.missing.length ? ` (missing: ${r.missing.join(', ')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+          </div>
+
           {dbRecords.length > 0 && (
             <div>
               <label className="text-xs text-stone-400 block mb-1">Load from database (optional)</label>

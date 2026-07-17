@@ -21,85 +21,10 @@ import DepthScale      from '../components/DepthScale';
 import HyperbolaOverlay from '../components/HyperbolaOverlay';
 import ObjectMap       from '../components/ObjectMap';
 import StatusBar       from '../components/StatusBar';
-import { findPeaks, extractFeatures } from '../models/knn';
+import { findPeaks } from '../models/knn';
 import { trainClassifier, predictClassifier } from '../models/svmModel';
 import { getMatrixRange } from '../utils/colormap';
-import { sampleToDepth } from '../utils/depthCalc';
-
-// ── Detection helpers ─────────────────────────────────────────────────────────
-
-/**
- * Estimate bounding box half-dimensions for a detected peak.
- * Uses the half-width at half-max in the apex row, and a fixed
- * depth window below the apex for height.
- */
-function estimateBounds(matrix, apexSample, apexTrace, halfDepthSamples = 15) {
-  const samples = matrix.length;
-  const traces  = matrix[0]?.length ?? 0;
-  const apexAmp = Math.abs(matrix[apexSample]?.[apexTrace] ?? 0);
-  const halfMax = apexAmp * 0.5;
-
-  let halfWidthTraces = 5; // default fallback
-  for (let dt = 1; dt <= 30; dt++) {
-    const l = Math.abs(matrix[apexSample]?.[Math.max(0, apexTrace - dt)] ?? 0);
-    const r = Math.abs(matrix[apexSample]?.[Math.min(traces - 1, apexTrace + dt)] ?? 0);
-    if (l < halfMax && r < halfMax) { halfWidthTraces = dt; break; }
-  }
-
-  return {
-    halfWidthTraces:  Math.max(3, halfWidthTraces),
-    halfDepthSamples: Math.min(halfDepthSamples, samples - apexSample - 1),
-  };
-}
-
-/**
- * Convert peak list → Detection objects.
- */
-function buildDetections(peaks, matrix, metadata, velocity, dx_m) {
-  return peaks.map((peak, i) => {
-    const { halfWidthTraces, halfDepthSamples } = estimateBounds(
-      matrix, peak.sample, peak.trace
-    );
-    const features = extractFeatures(matrix, peak.sample, peak.trace);
-    const depth_m  = sampleToDepth(peak.sample, metadata.dt_ns, velocity);
-    const position_m = peak.trace * (dx_m ?? 0.02);
-
-    // Size estimate: width in cm from trace spacing, height from sample spacing
-    const size_width_cm  = halfWidthTraces  * 2 * (dx_m ?? 0.02) * 100;
-    const size_height_cm = halfDepthSamples * 2 * (metadata.dt_ns * velocity / 2) * 100;
-
-    return {
-      id:               `det-${i}`,
-      trace:            peak.trace,
-      apexSample:       peak.sample,
-      position_m,
-      depth_ns:         peak.sample * metadata.dt_ns,
-      depth_m,
-      size_width_cm:    Math.round(size_width_cm  * 10) / 10,
-      size_height_cm:   Math.round(size_height_cm * 10) / 10,
-      halfWidthTraces,
-      halfDepthSamples,
-      amplitude:        peak.amplitude,
-      features,
-      label:            null,   // filled after classification
-      confidence:       null,
-      hyperbola: {
-        amplitude:    Math.abs(peak.amplitude),
-        width_traces: halfWidthTraces * 2,
-        curvature:    features[10] ?? 0,
-      },
-    };
-  });
-}
-
-// ── Default detection options ─────────────────────────────────────────────────
-
-const DEFAULT_OPTS = {
-  minAmplitudePct: 20,   // % of global max
-  neighborRadius:  10,
-  depthSkipPct:    5,    // skip top N% of scan (air wave)
-  depthMaxPct:     90,
-};
+import { buildDetections, DEFAULT_DETECT_OPTS as DEFAULT_OPTS } from '../utils/autoDetect';
 
 // ── Component ─────────────────────────────────────────────────────────────────
 

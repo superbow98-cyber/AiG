@@ -11,6 +11,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import StatusBar from '../components/StatusBar';
+import FileLoader from '../components/FileLoader';
+import useGPRData from '../hooks/useGPRData';
 import {
   getSpatialEmbedding,
   getDefaultResNet18,
@@ -18,6 +20,7 @@ import {
 } from '../models/resnet18';
 import { generateSyntheticScan } from '../utils/gprParser';
 import { sampleToDepth } from '../utils/depthCalc';
+import { quickAutoDetect } from '../utils/autoDetect';
 
 // Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
 // samples=300, dt_ns=0.2, dx_m=0.02 defaults) so a standalone "sample" detection
@@ -97,14 +100,60 @@ export default function ResNetSpatial() {
   const matrix = state?.matrix ?? localScan?.matrix ?? null;
   const detections = state?.detections ?? localScan?.detections ?? [];
   const metadata = state?.metadata ?? localScan?.metadata ?? null;
-  const filename = state?.filename ?? (localScan ? 'synthetic demo scan' : 'scan');
+  const filename = state?.filename ?? (localScan ? localScan.filename ?? 'synthetic demo scan' : 'scan');
   const scanId = state?.scanId ?? null;
   const velocity = state?.velocity ?? 0.1;
 
   function loadSampleScan() {
     const scan = generateSyntheticScan();
-    setLocalScan({ ...scan, detections: generateSampleDetections({ dt_ns: scan.metadata.dt_ns, dx_m: scan.metadata.dx_m, velocity }) });
+    setLocalScan({ ...scan, filename: 'synthetic demo scan', detections: generateSampleDetections({ dt_ns: scan.metadata.dt_ns, dx_m: scan.metadata.dx_m, velocity }) });
   }
+
+  // ── Standalone upload: only used when this page is opened directly (no
+  // location.state from Detect.jsx). Reuses the same FileLoader + parser as
+  // the Upload page, then runs the same quick classical detector Detect.jsx
+  // uses (models/knn.js findPeaks + utils/autoDetect.js) so a detection list
+  // exists for the crop-picker below — no need to visit Detect.jsx first. ──
+  const uploadHook = useGPRData();
+  const { scan: uploadedScan, setScan: setUploadedScan } = uploadHook;
+  const [autoDetecting, setAutoDetecting] = useState(false);
+  const [autoDetectError, setAutoDetectError] = useState(null);
+  const processedFileRef = useRef(null);
+
+  useEffect(() => {
+    if (state?.matrix) return; // arrived via Detect.jsx — nothing to auto-detect
+    if (!uploadedScan.matrix || !uploadedScan.metadata) return;
+    if (processedFileRef.current === uploadedScan.filename) return; // already processed
+    processedFileRef.current = uploadedScan.filename;
+
+    setAutoDetecting(true);
+    setAutoDetectError(null);
+    setTimeout(() => {
+      try {
+        const dets = quickAutoDetect(
+          uploadedScan.matrix,
+          uploadedScan.metadata,
+          uploadedScan.velocity ?? velocity,
+          uploadedScan.metadata.dx_m
+        );
+        if (dets.length === 0) {
+          setAutoDetectError('No anomalies found by the quick detector on this file. Try Detect.jsx directly for adjustable thresholds, or use "Load Sample Scan".');
+        } else {
+          setLocalScan({
+            matrix: uploadedScan.matrix,
+            metadata: uploadedScan.metadata,
+            filename: uploadedScan.filename,
+            detections: dets,
+          });
+        }
+      } catch (err) {
+        setAutoDetectError(err.message ?? 'Auto-detection failed on this file.');
+      } finally {
+        setAutoDetecting(false);
+      }
+    }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadedScan.matrix, uploadedScan.metadata, uploadedScan.filename]);
 
   const [selectedId, setSelectedId] = useState(detections[0]?.id ?? null);
   const [running, setRunning] = useState(false);
@@ -148,24 +197,36 @@ export default function ResNetSpatial() {
 
   if (!matrix || detections.length === 0) {
     return (
-      <div className="min-h-full flex items-center justify-center" style={{ background: '#FDFBF0' }}>
-        <div className="text-center max-w-sm space-y-4">
+      <div className="min-h-full flex items-center justify-center p-6" style={{ background: '#FDFBF0' }}>
+        <div className="text-center max-w-sm w-full space-y-4">
           <p className="text-stone-500">
-            No detections loaded. Run detection on a scan first, then open it here.
+            No detections loaded. Upload a GPR file below, run detection on a scan first via Detect, or try a sample.
           </p>
-          <Link to="/detect" className="text-sm font-medium block" style={{ color: '#C9971A' }}>
-            ← Go to Detect
-          </Link>
+
+          {/* Standalone upload — parses the file then auto-runs the quick
+              classical detector so a crop can be picked immediately below.
+              FileLoader's built-in "synthetic demo scan" link reuses the
+              same sample-detection flow as the button further down. */}
+          <div className="text-left">
+            <FileLoader setScan={setUploadedScan} loadDemo={loadSampleScan} scan={uploadedScan} />
+          </div>
+
+          {autoDetecting && (
+            <p className="text-xs text-stone-500">Parsing file &amp; auto-detecting anomalies…</p>
+          )}
+          {autoDetectError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs p-3 text-left">
+              {autoDetectError}
+            </div>
+          )}
+
           <div className="flex items-center gap-2 text-xs text-stone-400">
             <div className="flex-1 h-px bg-[#F0E9B8]" /> or <div className="flex-1 h-px bg-[#F0E9B8]" />
           </div>
-          <button
-            onClick={loadSampleScan}
-            className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors"
-            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
-          >
-            Load Sample Scan (try standalone)
-          </button>
+
+          <Link to="/detect" className="text-sm font-medium block" style={{ color: '#C9971A' }}>
+            ← Go to Detect (full pipeline, adjustable thresholds)
+          </Link>
         </div>
       </div>
     );
