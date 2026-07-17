@@ -12,6 +12,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import StatusBar from '../components/StatusBar';
 import FileLoader from '../components/FileLoader';
+import BScanViewer from '../components/BScanViewer';
+import HyperbolaOverlay from '../components/HyperbolaOverlay';
+import DepthScale from '../components/DepthScale';
 import useGPRData from '../hooks/useGPRData';
 import {
   getSpatialEmbedding,
@@ -20,6 +23,7 @@ import {
 } from '../models/resnet18';
 import { generateSyntheticScan } from '../utils/gprParser';
 import { sampleToDepth } from '../utils/depthCalc';
+import { getMatrixRange } from '../utils/colormap';
 import { quickAutoDetect } from '../utils/autoDetect';
 
 // Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
@@ -159,6 +163,22 @@ export default function ResNetSpatial() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
 
+  // ── Batch mode: run ResNet-18 on every detection at once (instead of
+  // picking one at a time) and preview all of them together as labelled
+  // boxes on a single B-scan — a "black box" view like the AI Detection Lab,
+  // but for the ResNet-18 crop→embedding step. Keyed by detection.id. ──
+  const [batchResults, setBatchResults] = useState({}); // { [detId]: resnetOutput }
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [colormap, setColormap] = useState('seismic');
+
+  const { min: minVal, max: maxVal } = matrix ? getMatrixRange(matrix) : { min: 0, max: 1 };
+  const samples = metadata?.samples ?? matrix?.length ?? 0;
+  const traces  = metadata?.traces  ?? (matrix?.[0]?.length ?? 0);
+
   // detections can populate after mount (via "Load Sample Scan"), so keep
   // the selection in sync rather than only initialising it once.
   useEffect(() => {
@@ -177,9 +197,38 @@ export default function ResNetSpatial() {
     setTimeout(() => {
       const out = getSpatialEmbedding(matrix, selectedDetection, { size: 32, model });
       setResult(out);
+      setBatchResults((prev) => ({ ...prev, [selectedDetection.id]: out }));
       setRunning(false);
     }, 0);
   }
+
+  // Runs ResNet-18 over every detection in one pass — same forward pass as
+  // runEmbedding(), just looped — so all crops get labelled on the B-scan
+  // together instead of switching the dropdown one at a time.
+  function runAllEmbeddings() {
+    if (!matrix || detections.length === 0) return;
+    setBatchRunning(true);
+    setBatchProgress(0);
+    setTimeout(() => {
+      const next = {};
+      detections.forEach((det, i) => {
+        next[det.id] = getSpatialEmbedding(matrix, det, { size: 32, model });
+        setBatchProgress(Math.round(((i + 1) / detections.length) * 100));
+      });
+      setBatchResults(next);
+      // also populate the single-select panel with the currently selected one
+      if (selectedDetection && next[selectedDetection.id]) setResult(next[selectedDetection.id]);
+      setBatchRunning(false);
+    }, 0);
+  }
+
+  // Detections annotated with each one's material-agnostic ResNet status
+  // (ran / not yet) so HyperbolaOverlay can label them on the shared B-scan.
+  const overlayDetections = detections.map((d, i) => ({
+    ...d,
+    label: batchResults[d.id] ? 'stone' : 'void', // stone=violet(ran), void=sky(pending) — see HyperbolaOverlay palette
+    confidence: batchResults[d.id] ? 1 : 0,
+  }));
 
   function sendToFusion() {
     if (!result) return;
@@ -247,6 +296,14 @@ export default function ResNetSpatial() {
         </div>
         <div className="flex gap-2">
           <button
+            onClick={runAllEmbeddings}
+            disabled={batchRunning || detections.length === 0}
+            className="px-4 py-2 rounded-xl text-sm font-medium border transition-colors disabled:opacity-50"
+            style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+          >
+            {batchRunning ? `Running all (${batchProgress}%)…` : `Run ResNet-18 on all ${detections.length}`}
+          </button>
+          <button
             onClick={sendToFusion}
             disabled={!result}
             className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
@@ -265,6 +322,56 @@ export default function ResNetSpatial() {
         signal. Swap in trained weights via <code>loadWeights()</code> in <code>src/models/resnet18.js</code>.
       </div>
 
+      {/* Shared B-scan — every detection labelled at once, click a box's row
+          in the picker (or the dropdown) to inspect that one's crop/embedding
+          on the right. Violet = ResNet-18 already run, sky = not yet. */}
+      <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-stone-600">
+            B-scan — all {detections.length} detections at once (violet = ran, sky = pending)
+          </span>
+          <select
+            value={colormap}
+            onChange={(e) => setColormap(e.target.value)}
+            className="text-xs bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 rounded px-2 py-1"
+          >
+            {['seismic', 'grey', 'viridis', 'hot'].map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="relative flex">
+          <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={360} />
+          <div className="relative flex-1">
+            <BScanViewer
+              matrix={matrix}
+              colormap={colormap}
+              minVal={minVal}
+              maxVal={maxVal}
+              height={360}
+              velocity={velocity}
+              dt_ns={metadata.dt_ns}
+              onViewChange={({ panOffset: po, zoom: z, canvasWidth: cw, canvasHeight: ch }) => {
+                setPanOffset(po); setZoom(z); setCanvasSize({ width: cw, height: ch });
+              }}
+            />
+            <HyperbolaOverlay
+              detections={overlayDetections}
+              canvasWidth={canvasSize.width}
+              canvasHeight={canvasSize.height}
+              totalTraces={traces}
+              totalSamples={samples}
+              panOffset={panOffset}
+              zoom={zoom}
+            />
+          </div>
+        </div>
+        {Object.keys(batchResults).length > 0 && (
+          <p className="text-xs text-stone-400">
+            {Object.keys(batchResults).length}/{detections.length} embeddings extracted.
+            Pick one below to inspect its crop, activations and 128-D vector, or send it to Fusion.
+          </p>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: detection picker + crop preview */}
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-4">
@@ -272,7 +379,7 @@ export default function ResNetSpatial() {
             <label className="text-xs text-stone-400 block mb-1">Select detection</label>
             <select
               value={selectedId ?? ''}
-              onChange={(e) => { setSelectedId(e.target.value); setResult(null); }}
+              onChange={(e) => { setSelectedId(e.target.value); setResult(batchResults[e.target.value] ?? null); }}
               className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 rounded-lg px-3 py-2 text-sm"
             >
               {detections.map((d, i) => (
