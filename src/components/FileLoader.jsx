@@ -43,10 +43,12 @@ export default function FileLoader({ setScan, loadDemo, scan, onScanLoaded }) {
 
   const onDragOver = (e) => { e.preventDefault(); setDragOver(true); };
   const onDragLeave = () => setDragOver(false);
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = [...e.dataTransfer.files];
+
+  // Shared by drag-drop AND click-browse: if exactly 2 files come in together
+  // and one of them is a .rad, pair them as the Mala primary+companion in one
+  // shot. Otherwise fall back to single-file handling (which will prompt for
+  // the companion separately if a lone .rd3/.dt2 comes in).
+  const handleFileList = useCallback((files) => {
     if (!files.length) return;
     if (files.length === 2) {
       const rad = files.find((f) => f.name.toLowerCase().endsWith('.rad'));
@@ -54,6 +56,12 @@ export default function FileLoader({ setScan, loadDemo, scan, onScanLoaded }) {
       if (rad && primary) { handleFile(primary, rad); return; }
     }
     handleFile(files[0]);
+  }, [handleFile]);
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    handleFileList([...e.dataTransfer.files]);
   };
 
   const handleDemo = () => {
@@ -82,15 +90,17 @@ export default function FileLoader({ setScan, loadDemo, scan, onScanLoaded }) {
           Drag &amp; drop a GPR file here, or click to browse
         </p>
         <p className="text-xs text-gray-500">
-          Supports .DZT, .rd3 / .dt2 (+ .rad), .sgy, .csv
+          Supports .DZT, .rd3 / .dt2 (+ .rad), .sgy, .csv — for Mala files, select both
+          the .rd3 and .rad together (Ctrl/Cmd-click both in the file dialog)
         </p>
         <input
           ref={primaryRef}
           type="file"
+          multiple
           className="hidden"
-          accept=".dzt,.rd3,.dt2,.sgy,.csv"
+          accept=".dzt,.rd3,.dt2,.sgy,.csv,.rad"
           onChange={(e) => {
-            if (e.target.files?.[0]) handleFile(e.target.files[0]);
+            handleFileList([...(e.target.files ?? [])]);
             e.target.value = '';
           }}
         />
