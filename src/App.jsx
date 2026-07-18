@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { FusionWorkspaceProvider } from './context/FusionWorkspaceContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 
@@ -18,12 +19,16 @@ import Validate from './pages/Validate'
 import BatchUpload from './pages/BatchUpload'
 import Connections from './pages/Connections'
 import Datasets from './pages/Datasets'
-import Reclassify from './pages/Reclassify'
+import DetectionLab from './pages/DetectionLab'
+import ResNetSpatial from './pages/ResNetSpatial'
+import XRFWorkspace from './pages/XRFWorkspace'
+import FusionEngine from './pages/FusionEngine'
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+      <FusionWorkspaceProvider>
         <Routes>
           {/* Public */}
           <Route path="/" element={<Home />} />
@@ -44,11 +49,17 @@ export default function App() {
               <Route path="/batch"      element={<BatchUpload />} />
               <Route path="/connections" element={<Connections />} />
               <Route path="/datasets"   element={<Datasets />} />
-              <Route path="/reclassify" element={<Reclassify />} />
+
+              {/* AI Research Lab — additive, PhD methodology modules */}
+              <Route path="/detection-lab"  element={<DetectionLab />} />
+              <Route path="/resnet-spatial" element={<ResNetSpatial />} />
+              <Route path="/xrf-workspace"  element={<XRFWorkspace />} />
+              <Route path="/fusion-engine"  element={<FusionEngine />} />
               <Route path="/settings"   element={<Settings />} />
             </Route>
           </Route>
         </Routes>
+      </FusionWorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>
   )
