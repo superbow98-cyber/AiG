@@ -86,32 +86,48 @@ function linkClass({ isActive }) {
   }`
 }
 
-export default function Sidebar() {
+export default function Sidebar({ open = false, onClose = () => {} }) {
   return (
-    <aside className="fixed top-14 left-0 bottom-0 w-56 z-30 overflow-y-auto bg-[#F7F3D0] border-r border-[#F0E9B8] py-4">
-      <nav className="flex flex-col gap-1 px-3">
-        {GROUPS.map((group, gi) => (
-          <div key={gi} className={gi > 0 ? 'mt-3' : ''}>
-            {group.heading && (
-              <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                {group.heading}
-              </p>
-            )}
-            {group.links.map(({ to, label, Icon }) => (
-              <NavLink key={to} to={to} className={linkClass}>
-                <Icon className="w-4 h-4 shrink-0" />
-                {label}
-              </NavLink>
-            ))}
-          </div>
-        ))}
-      </nav>
+    <>
+      {/* Mobile backdrop — tap outside to close. Hidden entirely on lg+
+          since the sidebar is always visible there (no drawer behaviour). */}
+      {open && (
+        <div
+          className="fixed inset-0 top-14 bg-black/30 z-20 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
 
-      <div className="px-5 mt-6 pt-4 border-t border-[#F0E9B8]">
-        <p className="text-[10px] leading-relaxed text-stone-400">
-          AiG mirrors the GPR+XRF+AI unified framework — pre-excavation material prediction.
-        </p>
-      </div>
-    </aside>
+      <aside
+        className={`fixed top-14 left-0 bottom-0 w-56 z-30 overflow-y-auto bg-[#F7F3D0] border-r border-[#F0E9B8] py-4
+          transform transition-transform duration-200 ease-out
+          ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
+      >
+        <nav className="flex flex-col gap-1 px-3">
+          {GROUPS.map((group, gi) => (
+            <div key={gi} className={gi > 0 ? 'mt-3' : ''}>
+              {group.heading && (
+                <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                  {group.heading}
+                </p>
+              )}
+              {group.links.map(({ to, label, Icon }) => (
+                <NavLink key={to} to={to} className={linkClass} onClick={onClose}>
+                  <Icon className="w-4 h-4 shrink-0" />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="px-5 mt-6 pt-4 border-t border-[#F0E9B8]">
+          <p className="text-[10px] leading-relaxed text-stone-400">
+            AiG mirrors the GPR+XRF+AI unified framework — pre-excavation material prediction.
+          </p>
+        </div>
+      </aside>
+    </>
   )
 }

@@ -1,7 +1,7 @@
 // AiG — Navbar.jsx  (LOCKED SPEC §6ao — pastel/gold theme)
 // Fixed top bar: AiG logo (left) · current scan filename (centre) · user + sign-out (right)
 import { useLocation } from 'react-router-dom'
-import { LogOut, FileText } from 'lucide-react'
+import { LogOut, FileText, Menu } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 function initials(email) {
@@ -10,7 +10,7 @@ function initials(email) {
   return name.slice(0, 2).toUpperCase()
 }
 
-export default function Navbar() {
+export default function Navbar({ onMenuClick = () => {} }) {
   const { user, isGuest, signOut } = useAuth()
   const location = useLocation()
   const filename = location.state?.filename ?? null
@@ -20,8 +20,15 @@ export default function Navbar() {
       className="fixed top-0 left-0 right-0 h-14 z-40 flex items-center justify-between px-4
                  bg-[#FDFBF0] border-b border-[#F0E9B8]"
     >
-      {/* Left — logo */}
-      <div className="flex items-center gap-2 w-56 shrink-0">
+      {/* Left — hamburger (mobile only) + logo */}
+      <div className="flex items-center gap-2 shrink-0 lg:w-56">
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden -ml-1 p-1.5 rounded-lg text-stone-600 hover:bg-[#F0E9B8]"
+          aria-label="Toggle menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
         <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-700 text-white font-bold text-sm">
           AiG
         </span>

@@ -93,6 +93,27 @@ export default function BScanViewer({
   // Notify parent after redraw when canvasWidth/height change
   useEffect(() => { notifyViewChange(); }, [canvasWidth, height, notifyViewChange]);
 
+  // ── Fit-to-width ───────────────────────────────────────────────────────────
+  // Previously the initial scale was hardcoded to 1 (1 screen pixel per GPR
+  // trace), so any scan with fewer traces than the container's pixel width
+  // (almost always true) only filled a fraction of the canvas on the left,
+  // while HyperbolaOverlay (which draws relative to the FULL container width)
+  // still spanned edge-to-edge — the two were never aligned until the user
+  // manually scroll-zoomed out. Recomputing scale = canvasWidth / traces
+  // whenever a scan loads or the container resizes (e.g. phone rotation,
+  // different screen size) makes the B-scan always fill the frame exactly,
+  // no manual zoom required. Scroll-wheel zoom still works normally after
+  // this from a correctly-framed starting point.
+  useEffect(() => {
+    if (!matrix?.length || !canvasWidth) return;
+    const traces = matrix[0].length;
+    if (!traces) return;
+    viewRef.current = { offsetX: 0, scale: canvasWidth / traces };
+    redraw();
+    notifyViewChange();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrix, canvasWidth]);
+
   // ── Resize observer ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;

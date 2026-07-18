@@ -52,7 +52,7 @@ export default function Detect() {
   const [canvasSize,  setCanvasSize]  = useState({ width: 0, height: 0 });
   const [panOffset,   setPanOffset]   = useState({ x: 0, y: 0 });
   const [zoom,        setZoom]        = useState(1);
-  const [colormap,    setColormap]    = useState('seismic');
+  const [colormap] = useState('grey'); // grayscale-only — standard GPR B-scan display (not seismic reflection data)
   const [hoverInfo,   setHoverInfo]   = useState(null);
 
   const canvasRef = useRef(null);
@@ -223,16 +223,9 @@ export default function Detect() {
       <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold text-stone-600">B-scan</span>
-          <select
-            value={colormap}
-            onChange={(e) => setColormap(e.target.value)}
-            className="text-xs bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700
-                       rounded px-2 py-1"
-          >
-            {['seismic', 'grey', 'viridis', 'hot'].map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+          <span className="text-xs text-stone-400 bg-[#F7F3D0] border border-[#E8DFA0] rounded px-2 py-1">
+            grayscale · amplitude
+          </span>
         </div>
 
         {/* Canvas + overlay wrapper */}

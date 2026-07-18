@@ -181,7 +181,7 @@ export default function ResNetSpatial() {
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [colormap, setColormap] = useState('seismic');
+  const [colormap] = useState('grey'); // grayscale-only — standard GPR B-scan display (not seismic reflection data)
 
   const { min: minVal, max: maxVal } = matrix ? getMatrixRange(matrix) : { min: 0, max: 1 };
   const samples = metadata?.samples ?? matrix?.length ?? 0;
@@ -371,13 +371,9 @@ export default function ResNetSpatial() {
           <span className="text-sm font-semibold text-stone-600">
             B-scan — all {detections.length} detections at once (violet = ran, sky = pending)
           </span>
-          <select
-            value={colormap}
-            onChange={(e) => setColormap(e.target.value)}
-            className="text-xs bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 rounded px-2 py-1"
-          >
-            {['seismic', 'grey', 'viridis', 'hot'].map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <span className="text-xs text-stone-400 bg-[#F7F3D0] border border-[#E8DFA0] rounded px-2 py-1">
+            grayscale · amplitude
+          </span>
         </div>
         <div className="relative flex">
           <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={360} />
