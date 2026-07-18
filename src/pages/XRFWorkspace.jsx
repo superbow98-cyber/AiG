@@ -18,6 +18,8 @@ import {
 } from '../models/xrfMLP';
 import { parseXRFCsv } from '../utils/xrfCsv';
 import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
+import { saveLabelledRecord } from '../lib/db';
+import { MATERIAL_CLASSES } from '../models/fusionEngine';
 
 const DEFAULT_ELEMENTS = XRF_ELEMENTS.reduce((acc, el) => {
   const { typical } = XRF_REFERENCE_RANGES[el];
@@ -79,6 +81,10 @@ export default function XRFWorkspace() {
 
   const [elements, setElements] = useState(state.elements ?? DEFAULT_ELEMENTS);
   const [result, setResult] = useState(null);
+  // §20 Stage 1 — XRF-only labelled record (trains xrfOnlyHead later).
+  const [groundTruth, setGroundTruth] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState(null);
   const [dbRecords, setDbRecords] = useState([]);
   const [selectedRecordId, setSelectedRecordId] = useState('');
   const [started, setStarted] = useState(false);
@@ -204,6 +210,28 @@ export default function XRFWorkspace() {
         elements,
       },
     });
+  }
+
+  async function handleSaveLabelledRecord() {
+    if (!groundTruth || !result || saving) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const { error } = await saveLabelledRecord({
+        groundTruthMaterial: groundTruth,
+        xrfElements: elements,
+        ctx: { filename: csvFilename },
+      });
+      if (error) throw error;
+      setSaveMsg({
+        type: 'success',
+        text: 'Saved as an XRF-only labelled record (trains xrfOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
+      });
+    } catch (err) {
+      setSaveMsg({ type: 'error', text: err.message || String(err) });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -467,6 +495,47 @@ export default function XRFWorkspace() {
           </div>
         </div>
       </div>
+      )}
+
+      {result && (
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-stone-400">
+              Save labelled record for training (§20)
+            </p>
+            <p className="text-[11px] text-stone-400 mt-1 max-w-xl">
+              Confirm the actual material for this XRF reading (human judgement, not the model's
+              output above) — saves an XRF-only ground-truth record for later use training{' '}
+              <code>xrfOnlyHead</code>.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={groundTruth}
+              onChange={(e) => { setGroundTruth(e.target.value); setSaveMsg(null); }}
+              className="px-3 py-2 rounded-lg text-sm border bg-white capitalize"
+              style={{ borderColor: '#E8DFA0' }}
+            >
+              <option value="">Confirmed material…</option>
+              {MATERIAL_CLASSES.map((c) => (
+                <option key={c} value={c} className="capitalize">{c}</option>
+              ))}
+            </select>
+            <button
+              onClick={handleSaveLabelledRecord}
+              disabled={!groundTruth || saving}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
+              style={{ background: '#92692A' }}
+            >
+              {saving ? 'Saving…' : 'Save labelled record'}
+            </button>
+          </div>
+          {saveMsg && (
+            <p className={`text-xs ${saveMsg.type === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>
+              {saveMsg.text}
+            </p>
+          )}
+        </div>
       )}
 
       <p className="text-xs text-stone-400">

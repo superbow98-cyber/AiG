@@ -26,6 +26,8 @@ import { sampleToDepth } from '../utils/depthCalc';
 import { getMatrixRange } from '../utils/colormap';
 import { quickAutoDetect } from '../utils/autoDetect';
 import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
+import { saveLabelledRecord } from '../lib/db';
+import { MATERIAL_CLASSES } from '../models/fusionEngine';
 
 // Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
 // samples=300, dt_ns=0.2, dx_m=0.02 defaults) so a standalone "sample" detection
@@ -164,6 +166,10 @@ export default function ResNetSpatial() {
   const [selectedId, setSelectedId] = useState(detections[0]?.id ?? null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
+  // §20 Stage 1 — GPR-only labelled record (trains gprOnlyHead later).
+  const [groundTruth, setGroundTruth] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState(null);
 
   // ── Batch mode: run ResNet-18 on every detection at once (instead of
   // picking one at a time) and preview all of them together as labelled
@@ -255,6 +261,28 @@ export default function ResNetSpatial() {
         detections,
       },
     });
+  }
+
+  async function handleSaveLabelledRecord() {
+    if (!groundTruth || !result || saving) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const { error } = await saveLabelledRecord({
+        groundTruthMaterial: groundTruth,
+        resnetEmbedding: result.embedding,
+        ctx: { filename },
+      });
+      if (error) throw error;
+      setSaveMsg({
+        type: 'success',
+        text: 'Saved as a GPR-only labelled record (trains gprOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
+      });
+    } catch (err) {
+      setSaveMsg({ type: 'error', text: err.message || String(err) });
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!matrix || detections.length === 0) {
@@ -478,6 +506,47 @@ export default function ResNetSpatial() {
           )}
         </div>
       </div>
+
+      {result && (
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-stone-400">
+              Save labelled record for training (§20)
+            </p>
+            <p className="text-[11px] text-stone-400 mt-1 max-w-xl">
+              Confirm the actual material for this crop (human judgement, e.g. from a field log or
+              this scan's known context) — this saves a GPR-only ground-truth record, distinct
+              from any AI prediction, for later use training <code>gprOnlyHead</code>.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={groundTruth}
+              onChange={(e) => { setGroundTruth(e.target.value); setSaveMsg(null); }}
+              className="px-3 py-2 rounded-lg text-sm border bg-white capitalize"
+              style={{ borderColor: '#E8DFA0' }}
+            >
+              <option value="">Confirmed material…</option>
+              {MATERIAL_CLASSES.map((c) => (
+                <option key={c} value={c} className="capitalize">{c}</option>
+              ))}
+            </select>
+            <button
+              onClick={handleSaveLabelledRecord}
+              disabled={!groundTruth || saving}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
+              style={{ background: '#92692A' }}
+            >
+              {saving ? 'Saving…' : 'Save labelled record'}
+            </button>
+          </div>
+          {saveMsg && (
+            <p className={`text-xs ${saveMsg.type === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>
+              {saveMsg.text}
+            </p>
+          )}
+        </div>
+      )}
 
       <StatusBar
         step={running ? 'Running ResNet-18 forward pass…' : result ? '128-D embedding extracted.' : 'Select a detection and run the network.'}

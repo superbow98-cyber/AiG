@@ -130,6 +130,54 @@ export async function saveXrfRecord(det, ctx = {}) {
   return { data, error };
 }
 
+// ── training-labelled records (§20 training roadmap, Stage 1) ────────────────
+// Distinct from detectionToRecord()/saveXrfRecord() above: those save an AI
+// detection's own guess into `xrf_material` as if it were ground truth, which
+// is fine for the Detection Lab review flow but useless (circular) as
+// training data. This path requires an explicit HUMAN-CONFIRMED material,
+// kept in its own field separate from whatever the AI predicted, so
+// gpr_xrf_records rows saved here are safe to eventually fit
+// fusionEngine.train() / gprOnlyHead / xrfOnlyHead against (§20 Stage 2).
+//
+// At least one of resnetEmbedding / xrfElements must be provided — a record
+// with only one half is still valid training data for that head's "-only"
+// classifier (gprOnlyHead or xrfOnlyHead), just not for the fusion head.
+export async function saveLabelledRecord({
+  groundTruthMaterial,       // required — human-confirmed, e.g. 'metal'
+  resnetEmbedding = null,    // 128-D array/Float32Array or null
+  xrfElements = null,        // { Fe: 12.3, Ca: 8.1, ... } or null
+  aiPrediction = null,       // { label, confidence } — what the model guessed, kept separate from ground truth
+  fusionScores = null,       // { fusion, gprOnly, xrfOnly } score dicts, optional
+  ctx = {},                  // { datasetId, siteId, filename, artifactCategory }
+}) {
+  if (!groundTruthMaterial) {
+    throw new Error('groundTruthMaterial is required — confirm the actual material before saving a training record.');
+  }
+  if (!resnetEmbedding && !xrfElements) {
+    throw new Error('Need at least one of resnetEmbedding or xrfElements to save a training record.');
+  }
+  const user_id = await requireUserId();
+  const resnetArr = resnetEmbedding ? Array.from(resnetEmbedding) : null;
+  const row = {
+    user_id,
+    dataset_id: ctx.datasetId ?? null,
+    site_id: ctx.siteId ?? null,
+    scan_filename: ctx.filename ?? null,
+    artifact_category: ctx.artifactCategory ?? null,
+    gpr_features: resnetArr ? { vector: resnetArr, length: resnetArr.length, source: 'resnet18_embedding' } : null,
+    xrf_features: xrfElements ?? null,
+    fusion_output: fusionScores ?? null,
+    xrf_material: groundTruthMaterial,          // ← ground truth, human-confirmed, NOT the AI's guess
+    xrf_elements: xrfElements ?? null,
+    ai_prediction: aiPrediction?.label ?? null, // ← AI's own guess, kept separate for later accuracy analysis
+    confidence: aiPrediction?.confidence ?? null,
+    predicted_material: aiPrediction?.label ?? null,
+    predicted_confidence: aiPrediction?.confidence ?? null,
+  };
+  const { data, error } = await supabase.from('gpr_xrf_records').insert(row).select('id').single();
+  return { data, error };
+}
+
 // ── connections ──────────────────────────────────────────────────────────────
 export async function sendConnection(addresseeId) {
   const requester_id = await requireUserId();

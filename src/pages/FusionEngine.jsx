@@ -19,6 +19,7 @@ import {
 import { getSpatialEmbedding, getDefaultResNet18, runResNet18 } from '../models/resnet18';
 import { getChemicalEmbedding, getDefaultXRFMLP, XRF_ELEMENTS, XRF_REFERENCE_RANGES } from '../models/xrfMLP';
 import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
+import { saveLabelledRecord } from '../lib/db';
 
 const MATERIAL_COLORS = {
   metal: '#a8a29e', ceramic: '#c2703d', lithic: '#78716c', soil: '#8b6f3f',
@@ -89,6 +90,12 @@ export default function FusionEngine() {
   );
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
+  // §20 Stage 1 — Save-to-Database: ground truth is a HUMAN confirmation,
+  // deliberately kept separate from result.fusion.label (the AI's own guess)
+  // so saved records are safe to train against later, not circular.
+  const [groundTruth, setGroundTruth] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState(null); // { type: 'success' | 'error', text }
   // If we arrived here via navigation with real inputs already in hand
   // (from ResNet-18 Spatial AI and/or XRF Workspace's "Send to Fusion"),
   // or the shared store already has data from an earlier visit this
@@ -200,6 +207,34 @@ export default function FusionEngine() {
       setResult({ ...out, contributions });
       setRunning(false);
     }, 0);
+  }
+
+  async function handleSaveLabelledRecord() {
+    if (!groundTruth || saving) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const elements = state.elements ?? workspace.xrf?.elements ?? null;
+      const { error } = await saveLabelledRecord({
+        groundTruthMaterial: groundTruth,
+        resnetEmbedding,
+        xrfElements: elements,
+        aiPrediction: result?.fusion ? { label: result.fusion.label, confidence: result.fusion.confidence } : null,
+        fusionScores: result
+          ? { fusion: result.fusion.scores, gprOnly: result.gprOnly.scores, xrfOnly: result.xrfOnly.scores }
+          : null,
+        ctx: { filename: workspace.resnet?.filename ?? state.filename ?? null },
+      });
+      if (error) throw error;
+      setSaveMsg({
+        type: 'success',
+        text: 'Saved. This record is now eligible for training once fusionEngine.train() is implemented (§20 Stage 2).',
+      });
+    } catch (err) {
+      setSaveMsg({ type: 'error', text: err.message || String(err) });
+    } finally {
+      setSaving(false);
+    }
   }
 
   const ready = Boolean(resnetEmbedding && xrfEmbedding);
@@ -336,6 +371,46 @@ export default function FusionEngine() {
             <p className="text-[10px] text-stone-400 mt-2">
               A lightweight stand-in for full Grad-CAM/SHAP — planned under the Explainable AI module.
             </p>
+          </div>
+
+          <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                Save labelled record for training (§20)
+              </p>
+              <p className="text-[11px] text-stone-400 mt-1 max-w-xl">
+                Confirm the <em>actual</em> material below — not the AI's guess above. Only
+                human-confirmed labels are saved as ground truth, so this data is safe to train
+                the fusion/GPR-only/XRF-only heads against later. Leave unset if you're not sure;
+                an unconfirmed sample isn't useful training data.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={groundTruth}
+                onChange={(e) => { setGroundTruth(e.target.value); setSaveMsg(null); }}
+                className="px-3 py-2 rounded-lg text-sm border bg-white capitalize"
+                style={{ borderColor: '#E8DFA0' }}
+              >
+                <option value="">Confirmed material…</option>
+                {MATERIAL_CLASSES.map((c) => (
+                  <option key={c} value={c} className="capitalize">{c}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleSaveLabelledRecord}
+                disabled={!groundTruth || saving}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-white transition-colors disabled:opacity-40"
+                style={{ background: '#92692A' }}
+              >
+                {saving ? 'Saving…' : 'Save labelled record'}
+              </button>
+            </div>
+            {saveMsg && (
+              <p className={`text-xs ${saveMsg.type === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>
+                {saveMsg.text}
+              </p>
+            )}
           </div>
         </>
       )}
