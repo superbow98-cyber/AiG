@@ -178,6 +178,25 @@ export async function saveLabelledRecord({
   return { data, error };
 }
 
+// List existing saved XRF readings (real, previously-confirmed samples) so a
+// user can pair one with a NEW GPR/ResNet embedding instead of re-entering
+// chemistry from scratch every time — e.g. reusing a known metal-artifact
+// reading from earlier fieldwork. Only rows with actual xrf_elements are
+// returned (rows saved without XRF, or the old 'unknown'-tagged junk rows,
+// are excluded). Caller is responsible for confirming the picked reading
+// genuinely corresponds to the same physical object as the GPR anomaly
+// before treating any resulting fusion save as valid ground truth — see the
+// warning in FusionEngine.jsx's save panel.
+export async function listSavedXrfSamples(limit = 25) {
+  const { data, error } = await supabase
+    .from('gpr_xrf_records')
+    .select('id, created_at, xrf_material, xrf_elements, scan_filename')
+    .not('xrf_elements', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return { data: data ?? [], error };
+}
+
 // ── connections ──────────────────────────────────────────────────────────────
 export async function sendConnection(addresseeId) {
   const requester_id = await requireUserId();

@@ -26,7 +26,8 @@ import { sampleToDepth } from '../utils/depthCalc';
 import { getMatrixRange } from '../utils/colormap';
 import { quickAutoDetect } from '../utils/autoDetect';
 import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
-import { saveLabelledRecord } from '../lib/db';
+import { saveLabelledRecord, listSavedXrfSamples } from '../lib/db';
+import { getChemicalEmbedding, XRF_ELEMENTS } from '../models/xrfMLP';
 import { MATERIAL_CLASSES } from '../models/fusionEngine';
 
 // Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
@@ -101,7 +102,7 @@ function EmbeddingStrip({ embedding }) {
 export default function ResNetSpatial() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { setResnet } = useFusionWorkspace();
+  const { setResnet, setXrf } = useFusionWorkspace();
   const state = location.state;
 
   const [localScan, setLocalScan] = useState(null);
@@ -166,6 +167,81 @@ export default function ResNetSpatial() {
   const [selectedId, setSelectedId] = useState(detections[0]?.id ?? null);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
+  // §22 follow-up — "why can't I add XRF right after ResNet, why does it just
+  // fuse GPR-only silently?" Give an explicit choice instead of a silent
+  // skip: pair with a previously-saved XRF reading, enter one from an
+  // external/reference source, or deliberately proceed GPR-only.
+  const [xrfMode, setXrfMode] = useState(null); // null | 'saved' | 'external' | 'skip'
+  const [savedXrfList, setSavedXrfList] = useState([]);
+  const [loadingSavedXrf, setLoadingSavedXrf] = useState(false);
+  const [savedXrfError, setSavedXrfError] = useState(null);
+  const [selectedSavedXrfId, setSelectedSavedXrfId] = useState('');
+  const [externalElements, setExternalElements] = useState(
+    Object.fromEntries(XRF_ELEMENTS.map((el) => [el, '']))
+  );
+  const [externalSourceNote, setExternalSourceNote] = useState('');
+  const [pairedXrf, setPairedXrf] = useState(null); // { embedding, elements, source, sourceNote/sourceId/sourceMaterial }
+  const [xrfPairError, setXrfPairError] = useState(null);
+
+  async function openSavedXrfPicker() {
+    setXrfMode('saved');
+    setXrfPairError(null);
+    if (savedXrfList.length > 0) return; // already loaded this visit
+    setLoadingSavedXrf(true);
+    setSavedXrfError(null);
+    try {
+      const { data, error } = await listSavedXrfSamples(25);
+      if (error) throw error;
+      setSavedXrfList(data);
+    } catch (err) {
+      setSavedXrfError(err.message || String(err));
+    } finally {
+      setLoadingSavedXrf(false);
+    }
+  }
+
+  function pickSavedXrf(id) {
+    setSelectedSavedXrfId(id);
+    const rec = savedXrfList.find((r) => r.id === id);
+    if (!rec) return;
+    try {
+      const { embedding } = getChemicalEmbedding(rec.xrf_elements);
+      setPairedXrf({
+        embedding: Array.from(embedding),
+        elements: rec.xrf_elements,
+        source: 'saved-record',
+        sourceId: rec.id,
+        sourceMaterial: rec.xrf_material,
+      });
+      setXrfPairError(null);
+    } catch (err) {
+      setXrfPairError(err.message || String(err));
+    }
+  }
+
+  function submitExternalXrf() {
+    const parsed = {};
+    for (const el of XRF_ELEMENTS) {
+      const v = parseFloat(externalElements[el]);
+      if (Number.isNaN(v)) {
+        setXrfPairError(`Enter a number for ${el} (or 0 if not detected).`);
+        return;
+      }
+      parsed[el] = v;
+    }
+    try {
+      const { embedding } = getChemicalEmbedding(parsed);
+      setPairedXrf({
+        embedding: Array.from(embedding),
+        elements: parsed,
+        source: 'external-reference',
+        sourceNote: externalSourceNote || '(no source noted)',
+      });
+      setXrfPairError(null);
+    } catch (err) {
+      setXrfPairError(err.message || String(err));
+    }
+  }
   // §20 Stage 1 — GPR-only labelled record (trains gprOnlyHead later).
   const [groundTruth, setGroundTruth] = useState('');
   const [saving, setSaving] = useState(false);
@@ -251,6 +327,24 @@ export default function ResNetSpatial() {
     // the user later leaves Fusion Engine to fill in the XRF half and comes
     // back, this ResNet embedding is still there (fixes "only fuses one").
     setResnet(resnetData);
+
+    // If the user paired an XRF reading right here (saved record or external
+    // reference), carry it along too — no detour through XRF Workspace
+    // required. If they chose "skip", pairedXrf stays null and Fusion Engine
+    // shows XRF as not-loaded exactly as before (GPR-only still works).
+    let xrfState = {};
+    if (pairedXrf) {
+      const xrfData = {
+        embedding: pairedXrf.embedding,
+        elements: pairedXrf.elements,
+        source: pairedXrf.source,
+        sourceNote: pairedXrf.sourceNote,
+        sourceId: pairedXrf.sourceId,
+      };
+      setXrf(xrfData);
+      xrfState = { xrfEmbedding: xrfData.embedding, elements: xrfData.elements };
+    }
+
     navigate('/fusion-engine', {
       state: {
         resnetEmbedding: resnetData.embedding,
@@ -259,6 +353,7 @@ export default function ResNetSpatial() {
         detection: selectedDetection,
         matrix, metadata, filename, scanId, velocity,
         detections,
+        ...xrfState,
       },
     });
   }
@@ -502,6 +597,147 @@ export default function ResNetSpatial() {
           )}
         </div>
       </div>
+
+      {result && (
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-stone-400">
+              Add XRF before sending to Fusion (optional)
+            </p>
+            <p className="text-[11px] text-stone-400 mt-1 max-w-xl">
+              "Send to Fusion Engine" used to go GPR-only every time, silently, with no chance to
+              pair a chemistry reading here first. Pick one explicitly — or choose "skip" on
+              purpose (still fine, GPR-only fusion still works):
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={openSavedXrfPicker}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              style={xrfMode === 'saved'
+                ? { borderColor: '#C9971A', color: 'white', background: '#C9971A' }
+                : { borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+            >
+              Pick a saved XRF reading
+            </button>
+            <button
+              onClick={() => { setXrfMode('external'); setXrfPairError(null); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              style={xrfMode === 'external'
+                ? { borderColor: '#C9971A', color: 'white', background: '#C9971A' }
+                : { borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+            >
+              Enter reference/external XRF values
+            </button>
+            <button
+              onClick={() => { setXrfMode('skip'); setPairedXrf(null); setXrfPairError(null); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              style={xrfMode === 'skip'
+                ? { borderColor: '#92692A', color: 'white', background: '#92692A' }
+                : { borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+            >
+              Skip — send GPR-only
+            </button>
+          </div>
+
+          {/* Option 1: pick a previously-saved reading */}
+          {xrfMode === 'saved' && (
+            <div className="space-y-2 pt-2 border-t border-[#F0E9B8]">
+              {loadingSavedXrf && <p className="text-xs text-stone-400">Loading saved XRF readings…</p>}
+              {savedXrfError && <p className="text-xs text-red-600">{savedXrfError}</p>}
+              {!loadingSavedXrf && !savedXrfError && savedXrfList.length === 0 && (
+                <p className="text-xs text-stone-400">No saved XRF readings found yet.</p>
+              )}
+              {savedXrfList.length > 0 && (
+                <select
+                  value={selectedSavedXrfId}
+                  onChange={(e) => pickSavedXrf(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg text-sm border bg-white"
+                  style={{ borderColor: '#E8DFA0' }}
+                >
+                  <option value="">Select a saved reading…</option>
+                  {savedXrfList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {new Date(r.created_at).toLocaleDateString()} — {r.xrf_material ?? 'unlabelled'}
+                      {r.scan_filename ? ` (${r.scan_filename})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                Only reuse a saved reading here if it's genuinely from the <strong>same physical
+                artifact</strong> as this GPR anomaly. Pairing an unrelated object's chemistry with
+                this crop is fine for exploring how Fusion behaves, but should not later be saved
+                as a combined ground-truth record.
+              </p>
+            </div>
+          )}
+
+          {/* Option 2: enter values from an external/reference source */}
+          {xrfMode === 'external' && (
+            <div className="space-y-2 pt-2 border-t border-[#F0E9B8]">
+              <div className="grid grid-cols-4 gap-2">
+                {XRF_ELEMENTS.map((el) => (
+                  <div key={el}>
+                    <label className="text-[10px] text-stone-400 block mb-0.5">{el} (%)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={externalElements[el]}
+                      onChange={(e) => setExternalElements((prev) => ({ ...prev, [el]: e.target.value }))}
+                      className="w-full px-2 py-1 rounded border text-sm"
+                      style={{ borderColor: '#E8DFA0' }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className="text-[10px] text-stone-400 block mb-0.5">
+                  Source (e.g. citation, prior study reference — not this specific artifact)
+                </label>
+                <input
+                  type="text"
+                  value={externalSourceNote}
+                  onChange={(e) => setExternalSourceNote(e.target.value)}
+                  placeholder="e.g. Smith et al. 2019, typical bronze artifact composition"
+                  className="w-full px-2 py-1.5 rounded border text-sm"
+                  style={{ borderColor: '#E8DFA0' }}
+                />
+              </div>
+              <button
+                onClick={submitExternalXrf}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
+                style={{ background: '#92692A' }}
+              >
+                Compute embedding from these values
+              </button>
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                This is reference/external chemistry, not a field reading of this specific
+                artifact — treat any resulting fusion score as exploratory only. Do not save it
+                through "Save labelled record" as this artifact's confirmed ground truth.
+              </p>
+            </div>
+          )}
+
+          {xrfPairError && <p className="text-xs text-red-600">{xrfPairError}</p>}
+
+          {pairedXrf && (
+            <p className="text-xs text-emerald-700">
+              ✓ XRF paired ({pairedXrf.source === 'saved-record'
+                ? `saved reading, ${pairedXrf.sourceMaterial ?? 'unlabelled'}`
+                : `external reference — ${pairedXrf.sourceNote}`}). Will be sent along with the
+              ResNet embedding.
+            </p>
+          )}
+          {xrfMode === 'skip' && (
+            <p className="text-xs text-stone-400">
+              Proceeding GPR-only on purpose — Fusion Engine will show XRF as not loaded, GPR-only
+              head still runs normally.
+            </p>
+          )}
+        </div>
+      )}
 
       {result && (
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">

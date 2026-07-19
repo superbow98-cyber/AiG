@@ -384,6 +384,16 @@ export default function FusionEngine() {
                 the fusion/GPR-only/XRF-only heads against later. Leave unset if you're not sure;
                 an unconfirmed sample isn't useful training data.
               </p>
+              {(workspace.xrf?.source === 'external-reference' || workspace.xrf?.source === 'saved-record') && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-2">
+                  ⚠️ This XRF reading was {workspace.xrf.source === 'external-reference'
+                    ? `entered as an external/reference value (${workspace.xrf.sourceNote ?? 'no source noted'})`
+                    : `reused from a previously-saved record`}, not measured fresh on this specific
+                  artifact. Only save this as a combined ground-truth record if you can confirm the
+                  chemistry reading and this GPR anomaly are genuinely the same physical object —
+                  otherwise this result is exploratory only, don't save it.
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <select
