@@ -3,10 +3,11 @@
 // incoming requests. Connected users can later share datasets (see Datasets).
 //
 // Route: /connections
-import { useState, useEffect, useCallback } from 'react';
-import { UserPlus, Search, Check, Clock, Users } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { UserPlus, Search, Check, Clock, Users, MessageSquare, Send, X } from 'lucide-react';
 import {
   searchProfiles, sendConnection, acceptConnection, listConnections, getProfilesByIds,
+  listDirectMessages, sendDirectMessage, subscribeDirectMessages,
 } from '../lib/db';
 
 function Avatar({ email }) {
@@ -18,6 +19,81 @@ function Avatar({ email }) {
   );
 }
 
+// Private 1:1 chat between two accepted connections — separate from the
+// dataset-scoped chat in Datasets.jsx (that one's tied to a dataset, this
+// one is a general conversation between two people, live via Realtime).
+function DMChatPanel({ me, otherId, otherLabel, onClose }) {
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState('');
+  const [err, setErr] = useState(null);
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    let unsub = () => {};
+    (async () => {
+      const { data, error } = await listDirectMessages(otherId);
+      if (error) { setErr(error.message); return; }
+      setMessages(data ?? []);
+      unsub = subscribeDirectMessages(me, otherId, (m) => {
+        setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+      });
+    })();
+    return () => unsub();
+  }, [me, otherId]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  async function send(e) {
+    e.preventDefault();
+    const body = text.trim();
+    if (!body) return;
+    setText('');
+    const { error } = await sendDirectMessage(otherId, body);
+    if (error) setErr(error.message);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg h-[70vh] flex flex-col border border-[#E8DFA0]">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[#F0E9B8]">
+          <h3 className="text-sm font-bold text-stone-800 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-[#C9971A]" /> {otherLabel}
+          </h3>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          {messages.length === 0 && <p className="text-center text-xs text-stone-400 mt-6">No messages yet — say hello.</p>}
+          {messages.map((m) => {
+            const mine = m.sender_id === me;
+            return (
+              <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[75%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-[#C9971A] text-white' : 'bg-[#F7F3D0] text-stone-700'}`}>
+                  {m.body}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={endRef} />
+        </div>
+
+        {err && <p className="px-5 text-xs text-red-600">{err}</p>}
+        <form onSubmit={send} className="flex gap-2 p-3 border-t border-[#F0E9B8]">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Write a message…"
+            className="flex-1 px-3 py-2 rounded-lg bg-[#FDFBF0] border border-[#E8DFA0] text-sm outline-none text-stone-700"
+          />
+          <button type="submit" className="px-3 py-2 rounded-lg text-white" style={{ background: '#C9971A' }}>
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Connections() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -25,6 +101,7 @@ export default function Connections() {
   const [conns, setConns] = useState({ incoming: [], outgoing: [], accepted: [], me: null });
   const [profiles, setProfiles] = useState({});
   const [msg, setMsg] = useState(null);
+  const [chatWith, setChatWith] = useState(null); // { id, label } or null
 
   const refresh = useCallback(async () => {
     const c = await listConnections();
@@ -162,11 +239,30 @@ export default function Connections() {
             <div key={r.id} className="flex items-center gap-2 px-4 py-2.5 border-b border-[#F0E9B8] last:border-0">
               <Avatar email={profiles[other(r)]?.email} />
               <span className="flex-1 text-xs text-stone-600 truncate">{profiles[other(r)]?.email || other(r)}</span>
+              <button
+                onClick={() => setChatWith({
+                  id: other(r),
+                  label: profiles[other(r)]?.display_name || profiles[other(r)]?.email || 'user',
+                })}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-white"
+                style={{ background: '#C9971A' }}
+              >
+                <MessageSquare className="w-3 h-3" /> Chat
+              </button>
               <Check className="w-3.5 h-3.5 text-emerald-600" />
             </div>
           ))}
         </div>
       </div>
+
+      {chatWith && (
+        <DMChatPanel
+          me={conns.me}
+          otherId={chatWith.id}
+          otherLabel={chatWith.label}
+          onClose={() => setChatWith(null)}
+        />
+      )}
     </div>
   );
 }

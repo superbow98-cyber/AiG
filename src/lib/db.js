@@ -256,6 +256,42 @@ export function subscribeMessages(datasetId, onInsert) {
   return () => { supabase.removeChannel(channel); };
 }
 
+// ── direct messages (private 1:1 chat between accepted connections) ──────────
+// Distinct from the dataset chat above: not scoped to a dataset, just a
+// private conversation between two users. RLS (migration 004) only allows
+// this between users with an 'accepted' row in user_connections — enforced
+// server-side, not just hidden in the UI.
+export async function listDirectMessages(otherUserId) {
+  const me = await requireUserId();
+  return supabase.from('direct_messages').select('*')
+    .or(`and(sender_id.eq.${me},recipient_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},recipient_id.eq.${me})`)
+    .order('created_at', { ascending: true });
+}
+
+export async function sendDirectMessage(otherUserId, body) {
+  const sender_id = await requireUserId();
+  return supabase.from('direct_messages').insert({ sender_id, recipient_id: otherUserId, body }).select().single();
+}
+
+// postgres_changes filters only support a single eq() condition, not an OR
+// across two columns, so this subscribes broadly and filters client-side to
+// just the messages between `myId` and `otherUserId`.
+export function subscribeDirectMessages(myId, otherUserId, onInsert) {
+  const channel = supabase
+    .channel(`dm_${[myId, otherUserId].sort().join('_')}`)
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+      (payload) => {
+        const m = payload.new;
+        const involvesUs =
+          (m.sender_id === myId && m.recipient_id === otherUserId) ||
+          (m.sender_id === otherUserId && m.recipient_id === myId);
+        if (involvesUs) onInsert(m);
+      })
+    .subscribe();
+  return () => { supabase.removeChannel(channel); };
+}
+
 // ── profile lookup by ids (for rendering connection/chat names) ──────────────
 export async function getProfilesByIds(ids) {
   const unique = [...new Set((ids || []).filter(Boolean))];

@@ -92,7 +92,7 @@ export default function Classify() {
       try {
         const { data, error } = await supabase
           .from('gpr_xrf_records')
-          .select('id, xrf_material as material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id');
+          .select('id, material:xrf_material, gpr_signature, hyperbola_shape, xrf_elements, depth_m, size_width_cm, site_id');
         if (error) throw error;
         setDbRecords(data ?? []);
       } catch (e) {
@@ -252,6 +252,17 @@ export default function Classify() {
             >
               View Results →
             </button>
+          )}
+          {results.length > 0 && (
+            <Link
+              to="/cluster"
+              state={{ ...state, detections: results }}
+              className="px-4 py-2 bg-white border border-[#E8DFA0] text-stone-600 hover:text-stone-900
+                         text-sm font-semibold rounded-lg transition-colors flex items-center"
+              title="Optional — group these classified objects by GPR signature similarity, a separate (unsupervised) analysis from classification"
+            >
+              Also try Cluster analysis →
+            </Link>
           )}
         </div>
       </div>
