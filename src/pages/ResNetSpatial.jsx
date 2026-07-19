@@ -28,6 +28,7 @@ import { quickAutoDetect } from '../utils/autoDetect';
 import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
 import { saveLabelledRecord, listSavedXrfSamples } from '../lib/db';
 import { getChemicalEmbedding, XRF_ELEMENTS } from '../models/xrfMLP';
+import { parseXRFCsv } from '../utils/xrfCsv';
 import { MATERIAL_CLASSES } from '../models/fusionEngine';
 
 // Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
@@ -182,6 +183,54 @@ export default function ResNetSpatial() {
   const [externalSourceNote, setExternalSourceNote] = useState('');
   const [pairedXrf, setPairedXrf] = useState(null); // { embedding, elements, source, sourceNote/sourceId/sourceMaterial }
   const [xrfPairError, setXrfPairError] = useState(null);
+  // Option 4 — upload a CSV, exactly the same parser XRF Workspace uses
+  // (models/xrfMLP.js XRF_ELEMENTS-matched columns), so this doesn't become
+  // a second, subtly-different CSV format to learn.
+  const [csvRows, setCsvRows] = useState([]);
+  const [csvFilename, setCsvFilename] = useState(null);
+  const [csvError, setCsvError] = useState(null);
+  const [selectedCsvRowId, setSelectedCsvRowId] = useState('');
+
+  function handleXrfCsvFile(file) {
+    setCsvError(null);
+    setCsvRows([]);
+    setSelectedCsvRowId('');
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setCsvError('Please upload a .csv file.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, error } = parseXRFCsv(String(reader.result));
+      if (error) { setCsvError(error); return; }
+      setCsvRows(rows);
+      setCsvFilename(file.name);
+    };
+    reader.onerror = () => setCsvError('Could not read the file.');
+    reader.readAsText(file);
+  }
+
+  function pickCsvRow(id) {
+    setSelectedCsvRowId(id);
+    const row = csvRows.find((r) => r.id === id);
+    if (!row) return;
+    if (row.missing.length > 0) {
+      setXrfPairError(`Row "${row.label}" is missing: ${row.missing.join(', ')} — fill those columns in the CSV and re-upload.`);
+      return;
+    }
+    try {
+      const { embedding } = getChemicalEmbedding(row.elements);
+      setPairedXrf({
+        embedding: Array.from(embedding),
+        elements: row.elements,
+        source: 'csv-upload',
+        sourceNote: `${csvFilename ?? 'uploaded CSV'} — ${row.label}`,
+      });
+      setXrfPairError(null);
+    } catch (err) {
+      setXrfPairError(err.message || String(err));
+    }
+  }
 
   async function openSavedXrfPicker() {
     setXrfMode('saved');
@@ -631,6 +680,15 @@ export default function ResNetSpatial() {
               Enter reference/external XRF values
             </button>
             <button
+              onClick={() => { setXrfMode('csv'); setXrfPairError(null); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
+              style={xrfMode === 'csv'
+                ? { borderColor: '#C9971A', color: 'white', background: '#C9971A' }
+                : { borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+            >
+              Upload XRF CSV
+            </button>
+            <button
               onClick={() => { setXrfMode('skip'); setPairedXrf(null); setXrfPairError(null); }}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors"
               style={xrfMode === 'skip'
@@ -720,12 +778,56 @@ export default function ResNetSpatial() {
             </div>
           )}
 
+          {/* Option 3: upload a CSV — same parser/format as XRF Workspace */}
+          {xrfMode === 'csv' && (
+            <div className="space-y-2 pt-2 border-t border-[#F0E9B8]">
+              <label
+                htmlFor="resnet-xrf-csv-input"
+                className="block border-2 border-dashed rounded-lg p-4 text-center text-xs cursor-pointer"
+                style={{ borderColor: '#E8DFA0', background: '#FDFBF0' }}
+              >
+                {csvFilename ? <strong className="text-stone-700">{csvFilename}</strong> : 'Click to browse, or drag a .csv here — one row per XRF reading'}
+                <input
+                  id="resnet-xrf-csv-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => { if (e.target.files?.[0]) handleXrfCsvFile(e.target.files[0]); }}
+                />
+              </label>
+              {csvError && <p className="text-xs text-red-600">{csvError}</p>}
+              {csvRows.length > 0 && !csvError && (
+                <select
+                  value={selectedCsvRowId}
+                  onChange={(e) => pickCsvRow(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg text-sm border bg-white"
+                  style={{ borderColor: '#E8DFA0' }}
+                >
+                  <option value="">
+                    {csvRows.length} reading{csvRows.length === 1 ? '' : 's'} parsed — select one…
+                  </option>
+                  {csvRows.map((r) => (
+                    <option key={r.id} value={r.id} disabled={r.missing.length > 0}>
+                      {r.label}{r.missing.length > 0 ? ` (missing ${r.missing.join(', ')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                Same "same physical artifact" rule applies — only save the resulting fusion as
+                ground truth if this CSV row is genuinely this anomaly's own XRF reading.
+              </p>
+            </div>
+          )}
+
           {xrfPairError && <p className="text-xs text-red-600">{xrfPairError}</p>}
 
           {pairedXrf && (
             <p className="text-xs text-emerald-700">
               ✓ XRF paired ({pairedXrf.source === 'saved-record'
                 ? `saved reading, ${pairedXrf.sourceMaterial ?? 'unlabelled'}`
+                : pairedXrf.source === 'csv-upload'
+                ? `CSV upload — ${pairedXrf.sourceNote}`
                 : `external reference — ${pairedXrf.sourceNote}`}). Will be sent along with the
               ResNet embedding.
             </p>
