@@ -148,6 +148,7 @@ export async function saveLabelledRecord({
   xrfElements = null,        // { Fe: 12.3, Ca: 8.1, ... } or null
   aiPrediction = null,       // { label, confidence } — what the model guessed, kept separate from ground truth
   fusionScores = null,       // { fusion, gprOnly, xrfOnly } score dicts, optional
+  isSynthetic = false,       // §24 — true only for deliberate demo/test data (e.g. §21 SYNTHETIC_DEMO_ files), never real field data
   ctx = {},                  // { datasetId, siteId, filename, artifactCategory }
 }) {
   if (!groundTruthMaterial) {
@@ -173,9 +174,20 @@ export async function saveLabelledRecord({
     confidence: aiPrediction?.confidence ?? null,
     predicted_material: aiPrediction?.label ?? null,
     predicted_confidence: aiPrediction?.confidence ?? null,
+    is_synthetic: isSynthetic,                  // ← §24 — must be true for demo/test data, false for real field data
   };
   const { data, error } = await supabase.from('gpr_xrf_records').insert(row).select('id').single();
   return { data, error };
+}
+
+// Delete a saved record outright — for removing unusable/mislabelled/junk
+// rows (e.g. the old pre-§20 'unknown' rows, or a synthetic row someone no
+// longer needs) to keep gpr_xrf_records trustworthy as a training source.
+// No soft-delete/undo — Database.jsx's Browse tab already confirms before
+// calling this.
+export async function deleteRecord(id) {
+  const { error } = await supabase.from('gpr_xrf_records').delete().eq('id', id);
+  return { error };
 }
 
 // List existing saved XRF readings (real, previously-confirmed samples) so a

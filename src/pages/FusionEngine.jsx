@@ -96,6 +96,10 @@ export default function FusionEngine() {
   const [groundTruth, setGroundTruth] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null); // { type: 'success' | 'error', text }
+  // §24 — explicit original/synthetic tag, defaults to false (real data).
+  // Auto-checked (but still editable) when the paired XRF came from a
+  // non-field source, since that's the common case this matters for.
+  const [isSynthetic, setIsSynthetic] = useState(false);
   // If we arrived here via navigation with real inputs already in hand
   // (from ResNet-18 Spatial AI and/or XRF Workspace's "Send to Fusion"),
   // or the shared store already has data from an earlier visit this
@@ -223,12 +227,15 @@ export default function FusionEngine() {
         fusionScores: result
           ? { fusion: result.fusion.scores, gprOnly: result.gprOnly.scores, xrfOnly: result.xrfOnly.scores }
           : null,
+        isSynthetic,
         ctx: { filename: workspace.resnet?.filename ?? state.filename ?? null },
       });
       if (error) throw error;
       setSaveMsg({
         type: 'success',
-        text: 'Saved. This record is now eligible for training once fusionEngine.train() is implemented (§20 Stage 2).',
+        text: isSynthetic
+          ? 'Saved and tagged synthetic — excluded from Stage 2 training queries by default, visible in Database → Browse.'
+          : 'Saved. This record is now eligible for training once fusionEngine.train() is implemented (§20 Stage 2).',
       });
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.message || String(err) });
@@ -397,6 +404,14 @@ export default function FusionEngine() {
                 </p>
               )}
             </div>
+            <label className="flex items-center gap-2 text-xs text-stone-600">
+              <input
+                type="checkbox"
+                checked={isSynthetic}
+                onChange={(e) => setIsSynthetic(e.target.checked)}
+              />
+              This is synthetic/demo data (e.g. §21 test files), not a real field reading
+            </label>
             <div className="flex flex-wrap items-center gap-3">
               <select
                 value={groundTruth}

@@ -85,6 +85,7 @@ export default function XRFWorkspace() {
   const [groundTruth, setGroundTruth] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+  const [isSynthetic, setIsSynthetic] = useState(false); // §24 — original/synthetic tag
   const [dbRecords, setDbRecords] = useState([]);
   const [selectedRecordId, setSelectedRecordId] = useState('');
   const [started, setStarted] = useState(false);
@@ -220,12 +221,15 @@ export default function XRFWorkspace() {
       const { error } = await saveLabelledRecord({
         groundTruthMaterial: groundTruth,
         xrfElements: elements,
+        isSynthetic,
         ctx: { filename: csvFilename },
       });
       if (error) throw error;
       setSaveMsg({
         type: 'success',
-        text: 'Saved as an XRF-only labelled record (trains xrfOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
+        text: isSynthetic
+          ? 'Saved and tagged synthetic — excluded from Stage 2 training queries by default, visible in Database → Browse.'
+          : 'Saved as an XRF-only labelled record (trains xrfOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
       });
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.message || String(err) });
@@ -509,6 +513,14 @@ export default function XRFWorkspace() {
               <code>xrfOnlyHead</code>.
             </p>
           </div>
+          <label className="flex items-center gap-2 text-xs text-stone-600">
+            <input
+              type="checkbox"
+              checked={isSynthetic}
+              onChange={(e) => setIsSynthetic(e.target.checked)}
+            />
+            This is synthetic/demo data (e.g. §21 test files), not a real field reading
+          </label>
           <div className="flex flex-wrap items-center gap-3">
             <select
               value={groundTruth}

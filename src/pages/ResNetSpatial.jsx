@@ -295,6 +295,7 @@ export default function ResNetSpatial() {
   const [groundTruth, setGroundTruth] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+  const [isSynthetic, setIsSynthetic] = useState(false); // §24 — original/synthetic tag
 
   // ── Batch mode: run ResNet-18 on every detection at once (instead of
   // picking one at a time) and preview all of them together as labelled
@@ -415,12 +416,15 @@ export default function ResNetSpatial() {
       const { error } = await saveLabelledRecord({
         groundTruthMaterial: groundTruth,
         resnetEmbedding: result.embedding,
+        isSynthetic,
         ctx: { filename },
       });
       if (error) throw error;
       setSaveMsg({
         type: 'success',
-        text: 'Saved as a GPR-only labelled record (trains gprOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
+        text: isSynthetic
+          ? 'Saved and tagged synthetic — excluded from Stage 2 training queries by default, visible in Database → Browse.'
+          : 'Saved as a GPR-only labelled record (trains gprOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
       });
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.message || String(err) });
@@ -853,6 +857,14 @@ export default function ResNetSpatial() {
               from any AI prediction, for later use training <code>gprOnlyHead</code>.
             </p>
           </div>
+          <label className="flex items-center gap-2 text-xs text-stone-600">
+            <input
+              type="checkbox"
+              checked={isSynthetic}
+              onChange={(e) => setIsSynthetic(e.target.checked)}
+            />
+            This is synthetic/demo data (e.g. §21 test files), not a real field reading
+          </label>
           <div className="flex flex-wrap items-center gap-3">
             <select
               value={groundTruth}

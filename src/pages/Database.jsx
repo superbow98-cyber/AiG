@@ -32,6 +32,7 @@ const EMPTY_FORM = {
   gps_lng:        '',
   excavation_date:'',
   notes:          '',
+  is_synthetic:   false,
 };
 
 // ── XRF elements parser ───────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ export default function Database() {
   const [searchMat,   setSearchMat]  = useState('');
   const [searchSite,  setSearchSite] = useState('');
   const [filterType,  setFilterType] = useState(''); // '' = all record types
+  const [filterSynthetic, setFilterSynthetic] = useState(''); // '' | 'false' | 'true'
   const [expandedId,  setExpandedId] = useState(null);
   const [deleteId,    setDeleteId]   = useState(null);
   const [counts,      setCounts]     = useState([]); // from gpr_xrf_material_counts view
@@ -86,6 +88,7 @@ export default function Database() {
       if (searchMat)  query = query.ilike('xrf_material', `%${searchMat}%`);
       if (searchSite) query = query.ilike('site_id',      `%${searchSite}%`);
       if (filterType) query = query.eq('record_type', filterType);
+      if (filterSynthetic !== '') query = query.eq('is_synthetic', filterSynthetic === 'true');
 
       const { data, error, count } = await query;
       if (error) throw error;
@@ -96,7 +99,7 @@ export default function Database() {
     } finally {
       setLoading(false);
     }
-  }, [page, searchMat, searchSite, filterType]);
+  }, [page, searchMat, searchSite, filterType, filterSynthetic]);
 
   // Per-material record counts (for KNN data-sufficiency indicator)
   const fetchCounts = useCallback(async () => {
@@ -113,7 +116,7 @@ export default function Database() {
   useEffect(() => { fetchCounts(); }, [fetchCounts]);
 
   // Reset page when filters change
-  useEffect(() => { setPage(0); }, [searchMat, searchSite, filterType]);
+  useEffect(() => { setPage(0); }, [searchMat, searchSite, filterType, filterSynthetic]);
 
   // ── Delete record ──────────────────────────────────────────────────────────
   async function handleDelete(id) {
@@ -159,6 +162,7 @@ export default function Database() {
         excavation_date: form.excavation_date || null,
         notes:           form.notes          || null,
         gpr_signature,
+        is_synthetic:    form.is_synthetic,
       };
 
       const { error } = await supabase.from('gpr_xrf_records').insert(row);
@@ -268,6 +272,17 @@ export default function Database() {
                 <option key={t} value={t}>{t.replace('_', ' ')}</option>
               ))}
             </select>
+            <select
+              value={filterSynthetic}
+              onChange={(e) => setFilterSynthetic(e.target.value)}
+              className="bg-white border border-[#F0E9B8] text-stone-700 text-sm
+                         rounded-lg px-3 py-2 focus:outline-none focus:border-[#C9971A]"
+              title="§24 — filter by whether a record is real field data or deliberately-tagged synthetic/demo data"
+            >
+              <option value="">Original + synthetic</option>
+              <option value="false">Original only</option>
+              <option value="true">Synthetic only</option>
+            </select>
             <button
               onClick={() => { fetchRecords(); fetchCounts(); }}
               className="px-4 py-2 bg-[#F7F3D0] hover:bg-[#F0E9B8] text-stone-700
@@ -296,7 +311,7 @@ export default function Database() {
               <table className="w-full text-sm">
                 <thead className="bg-[#FDFBF0] text-stone-500 text-xs uppercase tracking-wide">
                   <tr>
-                    {['Site', 'Material', 'Depth', 'Size', 'Date', 'Notes', ''].map((h) => (
+                    {['Site', 'Material', 'Type', 'Saved', 'Depth', 'Size', 'Notes', ''].map((h) => (
                       <th key={h} className="px-4 py-3 text-left">{h}</th>
                     ))}
                   </tr>
@@ -317,6 +332,17 @@ export default function Database() {
                             {rec.xrf_material ?? '—'}
                           </span>
                         </td>
+                        <td className="px-4 py-2">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full
+                            ${rec.is_synthetic
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-emerald-100 text-emerald-700'}`}>
+                            {rec.is_synthetic ? 'Synthetic' : 'Original'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 text-stone-500 text-xs whitespace-nowrap">
+                          {rec.created_at ? new Date(rec.created_at).toLocaleString() : '—'}
+                        </td>
                         <td className="px-4 py-2 text-stone-600 font-mono">
                           {rec.depth_m != null ? `${rec.depth_m.toFixed(2)}m` : '—'}
                         </td>
@@ -324,9 +350,6 @@ export default function Database() {
                           {rec.size_width_cm && rec.size_height_cm
                             ? `${rec.size_width_cm}×${rec.size_height_cm}cm`
                             : '—'}
-                        </td>
-                        <td className="px-4 py-2 text-stone-500 text-xs">
-                          {rec.excavation_date ?? '—'}
                         </td>
                         <td className="px-4 py-2 text-stone-400 text-xs max-w-xs truncate">
                           {rec.notes ?? '—'}
@@ -344,7 +367,7 @@ export default function Database() {
                       {/* Expanded row */}
                       {expandedId === rec.id && (
                         <tr key={`${rec.id}-exp`}>
-                          <td colSpan={7} className="px-6 py-4 bg-[#FDFBF0]">
+                          <td colSpan={8} className="px-6 py-4 bg-[#FDFBF0]">
                             <div className="grid grid-cols-2 gap-6 text-xs">
                               <div className="space-y-2">
                                 <p className="text-stone-500 font-semibold mb-1">Details</p>
@@ -354,6 +377,9 @@ export default function Database() {
                                   ['Position',   rec.position_m != null ? `${rec.position_m.toFixed(2)}m` : null],
                                   ['Depth ns',   rec.depth_ns != null ? `${rec.depth_ns.toFixed(1)}ns` : null],
                                   ['GPR sig',    rec.gpr_signature?.length ? `${rec.gpr_signature.length}-dim vector` : null],
+                                  ['GPR embedding', rec.gpr_features ? '✓ present (128-D)' : null],
+                                  ['XRF features',  rec.xrf_features ? '✓ present' : null],
+                                  ['Fusion output',  rec.fusion_output && Object.keys(rec.fusion_output).length ? '✓ present' : null],
                                 ].map(([label, val]) => val ? (
                                   <div key={label} className="flex gap-2">
                                     <span className="text-stone-400 w-24 flex-shrink-0">{label}</span>
@@ -361,23 +387,44 @@ export default function Database() {
                                   </div>
                                 ) : null)}
                               </div>
-                              {rec.xrf_elements && (
-                                <div>
-                                  <p className="text-stone-500 font-semibold mb-1">XRF Elements</p>
-                                  <div className="flex flex-wrap gap-2">
-                                    {Object.entries(rec.xrf_elements)
-                                      .sort((a, b) => b[1] - a[1])
-                                      .map(([el, pct]) => (
-                                        <span
-                                          key={el}
-                                          className="bg-[#F7F3D0] text-stone-700 px-2 py-1 rounded font-mono"
-                                        >
-                                          {el}: {typeof pct === 'number' ? pct.toFixed(1) : pct}%
-                                        </span>
-                                      ))}
+                              <div className="space-y-3">
+                                {(rec.ai_prediction || rec.confidence != null) && (
+                                  <div>
+                                    <p className="text-stone-500 font-semibold mb-1">
+                                      AI prediction (§20 — kept separate from ground truth)
+                                    </p>
+                                    <div className="flex gap-2">
+                                      <span className="text-stone-400 w-24 flex-shrink-0">Predicted</span>
+                                      <span className="text-stone-600 font-mono capitalize">
+                                        {rec.ai_prediction ?? '—'}
+                                        {rec.confidence != null ? ` (${(rec.confidence * 100).toFixed(1)}%)` : ''}
+                                      </span>
+                                    </div>
+                                    {rec.ai_prediction && rec.xrf_material && rec.ai_prediction !== rec.xrf_material && (
+                                      <p className="text-amber-700 mt-1">
+                                        ⚠ AI disagreed with confirmed ground truth ({rec.xrf_material})
+                                      </p>
+                                    )}
                                   </div>
-                                </div>
-                              )}
+                                )}
+                                {rec.xrf_elements && (
+                                  <div>
+                                    <p className="text-stone-500 font-semibold mb-1">XRF Elements</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {Object.entries(rec.xrf_elements)
+                                        .sort((a, b) => b[1] - a[1])
+                                        .map(([el, pct]) => (
+                                          <span
+                                            key={el}
+                                            className="bg-[#F7F3D0] text-stone-700 px-2 py-1 rounded font-mono"
+                                          >
+                                            {el}: {typeof pct === 'number' ? pct.toFixed(1) : pct}%
+                                          </span>
+                                        ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -571,6 +618,21 @@ export default function Database() {
                          rounded-lg px-3 py-2 placeholder-stone-400 resize-none"
             />
           </div>
+
+          {/* §24 — explicit original/synthetic tag, required conscious choice */}
+          <label className="flex items-start gap-2 text-xs text-stone-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <input
+              type="checkbox"
+              checked={form.is_synthetic}
+              onChange={(e) => setField('is_synthetic', e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              This is <strong>synthetic/demo data</strong>, not a real field reading (e.g. testing
+              the pipeline with made-up values). Leave unchecked for real confirmed excavation
+              data — synthetic rows are excluded from Stage 2 training queries by default.
+            </span>
+          </label>
 
           {/* Submit feedback */}
           {submitMsg   && <p className="text-[#C9971A] text-sm">{submitMsg}</p>}
