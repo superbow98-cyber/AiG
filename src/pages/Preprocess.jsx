@@ -5,6 +5,7 @@ import BScanViewer from '../components/BScanViewer'
 import DepthScale from '../components/DepthScale'
 import StatusBar from '../components/StatusBar'
 import { usePreprocessing, STEP_DEFS } from '../hooks/usePreprocessing'
+import { getMatrixRange } from '../utils/colormap'
 
 const STEP_KEYS = ['backgroundRemoval', 'dewow', 'linearGain', 'agc', 'bandpass', 'pca', 'ica']
 
@@ -40,6 +41,14 @@ export default function Preprocess() {
 
   const { matrix: rawMatrix, metadata, filename, format, velocity, scanId } = state
   const largeScan = metadata?.traces > 1500
+
+  // BScanViewer needs a real amplitude range — passing null/null silently
+  // becomes range=0 in normaliseValue() and paints every pixel black.
+  // Before/After have different ranges (e.g. AGC/gain steps change scale),
+  // so compute each independently and recompute AFTER whenever it changes.
+  const { min: beforeMin, max: beforeMax } = getMatrixRange(rawMatrix)
+  const afterMatrix = processedMatrix ?? rawMatrix
+  const { min: afterMin, max: afterMax } = getMatrixRange(afterMatrix)
 
   function handleAdd(key) {
     applyStep(key, paramState[key])
@@ -119,8 +128,8 @@ export default function Preprocess() {
               <BScanViewer
                 matrix={rawMatrix}
                 colormap="grey"
-                minVal={null}
-                maxVal={null}
+                minVal={beforeMin}
+                maxVal={beforeMax}
                 height={320}
                 velocity={velocity}
                 dt_ns={metadata.dt_ns}
@@ -144,10 +153,10 @@ export default function Preprocess() {
               />
               <div className="flex-1 min-w-0">
                 <BScanViewer
-                  matrix={processedMatrix ?? rawMatrix}
+                  matrix={afterMatrix}
                   colormap="grey"
-                  minVal={null}
-                  maxVal={null}
+                  minVal={afterMin}
+                  maxVal={afterMax}
                   height={320}
                   velocity={velocity}
                   dt_ns={metadata.dt_ns}
