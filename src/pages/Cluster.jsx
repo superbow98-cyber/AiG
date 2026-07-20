@@ -184,18 +184,35 @@ export default function Cluster() {
     }
   }, [vectors, algorithm, opts]);
 
-  // ── Labelled detections for ObjectMap ─────────────────────────────────────
+  // ── Detections annotated with cluster group ────────────────────────────────
+  // IMPORTANT: keeps the real `material`/`label` assigned by Classify/Detect
+  // untouched. This used to overwrite both fields with `cluster-${labels[i]}`,
+  // which meant every downstream DB save (Results.jsx → saveXrfRecord() →
+  // db.js's xrf_material: det.material ?? det.label) silently replaced the
+  // real material with a placeholder string — visible in Database → Browse
+  // as `xrf_material` values like "cluster-0"/"cluster-1"/"cluster-2" instead
+  // of metal/ceramic/lithic/soil. Cluster is unsupervised (§26a) and was never
+  // meant to assign material at all — it only adds a *separate* grouping on
+  // top of whatever material Classify already decided. See central brain §28.
   const labelledDetections = useMemo(() =>
     detections.map((d, i) => ({
       ...d,
-      material: labels[i] != null && labels[i] !== -1
-        ? `cluster-${labels[i]}`
-        : (labels[i] === -1 ? 'noise' : (d.material ?? d.label ?? 'unknown')),
-      label: labels[i] != null && labels[i] !== -1
-        ? `cluster-${labels[i]}`
-        : (labels[i] === -1 ? 'noise' : (d.material ?? d.label ?? 'unknown')),
+      clusterLabel: labels[i] ?? null, // numeric cluster index, -1 = noise, null = not yet clustered
+      clusterId: labels[i] == null ? null : (labels[i] === -1 ? 'noise' : `cluster-${labels[i]}`),
     })),
     [detections, labels]
+  );
+
+  // ── Map-only view: this page's ObjectMap is meant to show cluster grouping
+  // spatially, so colour dots by clusterId here — but only for this display,
+  // never fed into /results or any DB save (labelledDetections above, which
+  // keeps the real material, is what goResults() sends onward).
+  const mapDetections = useMemo(() =>
+    labelledDetections.map((d) => ({
+      ...d,
+      label: d.clusterId ?? d.material ?? d.label ?? 'unknown',
+    })),
+    [labelledDetections]
   );
 
   // ── Cluster summary ────────────────────────────────────────────────────────
@@ -417,7 +434,7 @@ export default function Cluster() {
 
       {/* Object map */}
       <ObjectMap
-        detections={labels.length ? labelledDetections : detections}
+        detections={labels.length ? mapDetections : detections}
         scanLengthM={scanLengthM}
         velocity={velocity}
       />
