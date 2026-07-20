@@ -17,6 +17,27 @@ const PARAM_DEFAULTS = {
   ica: { nComponents: 3 },
 }
 
+// Short practical guidance shown under each slider — how to pick a value,
+// not just what the parameter does (that's already in STEP_DEFS description).
+const PARAM_GUIDANCE = {
+  linearGain: {
+    factor: 'Higher = deeper reflections boosted more. Start at 2. Push to 3–4 if deep targets look faint; drop to 1–1.5 if shallow signal is already saturated/clipping.',
+  },
+  agc: {
+    windowSize: 'Samples per averaging window. Smaller (16–24) = more aggressive, can amplify noise. Larger (48–64) = gentler, keeps more true amplitude contrast. 32 is a safe middle ground for most antennas.',
+  },
+  bandpass: {
+    lowMHz: 'Set to roughly half your antenna\'s centre frequency (e.g. 100 MHz antenna → ~50 MHz low cut) to remove slow DC drift without cutting real signal.',
+    highMHz: 'Set to roughly 2–3× your antenna\'s centre frequency (e.g. 100 MHz antenna → ~250–300 MHz high cut) to suppress high-frequency noise above what the antenna can actually resolve.',
+  },
+  pca: {
+    nComponents: 'Number of dominant horizontal-banding components to strip out. Start at 2. Raise only if banding/clutter persists after — going too high starts removing real shallow reflections, not just clutter.',
+  },
+  ica: {
+    nComponents: 'Number of independent noise sources to separate out. Start at 3. Best used after PCA if clutter is still messy/non-uniform (PCA alone handles simple coherent banding; ICA handles more irregular interference).',
+  },
+}
+
 export default function Preprocess() {
   const navigate = useNavigate()
   const { state } = useLocation()
@@ -201,23 +222,30 @@ export default function Preprocess() {
 
                   {/* Param sliders */}
                   {params && Object.entries(params).map(([p, val]) => (
-                    <div key={p} className="mt-2 flex items-center gap-3">
-                      <label className="text-xs text-stone-500 w-28 shrink-0">{p}</label>
-                      <input
-                        type="range"
-                        min={p === 'nComponents' ? 1 : p === 'factor' ? 0.5 : p === 'windowSize' ? 8 : p === 'lowMHz' ? 50 : p === 'highMHz' ? 200 : 0}
-                        max={p === 'nComponents' ? 8 : p === 'factor' ? 10 : p === 'windowSize' ? 128 : p === 'lowMHz' ? 500 : p === 'highMHz' ? 1200 : 10}
-                        step={p === 'factor' ? 0.5 : 1}
-                        value={val}
-                        onChange={e =>
-                          setParamState(prev => ({
-                            ...prev,
-                            [key]: { ...prev[key], [p]: Number(e.target.value) }
-                          }))
-                        }
-                        className="flex-1 accent-amber-500"
-                      />
-                      <span className="text-xs text-stone-600 w-10 text-right">{val}{p.includes('MHz') ? ' MHz' : ''}</span>
+                    <div key={p} className="mt-2">
+                      <div className="flex items-center gap-3">
+                        <label className="text-xs text-stone-500 w-28 shrink-0">{p}</label>
+                        <input
+                          type="range"
+                          min={p === 'nComponents' ? 1 : p === 'factor' ? 0.5 : p === 'windowSize' ? 8 : p === 'lowMHz' ? 50 : p === 'highMHz' ? 200 : 0}
+                          max={p === 'nComponents' ? 8 : p === 'factor' ? 10 : p === 'windowSize' ? 128 : p === 'lowMHz' ? 500 : p === 'highMHz' ? 1200 : 10}
+                          step={p === 'factor' ? 0.5 : 1}
+                          value={val}
+                          onChange={e =>
+                            setParamState(prev => ({
+                              ...prev,
+                              [key]: { ...prev[key], [p]: Number(e.target.value) }
+                            }))
+                          }
+                          className="flex-1 accent-amber-500"
+                        />
+                        <span className="text-xs text-stone-600 w-10 text-right">{val}{p.includes('MHz') ? ' MHz' : ''}</span>
+                      </div>
+                      {PARAM_GUIDANCE[key]?.[p] && (
+                        <p className="text-[11px] text-stone-400 leading-snug mt-1 pl-[7.5rem] pr-1">
+                          {PARAM_GUIDANCE[key][p]}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
