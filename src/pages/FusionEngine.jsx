@@ -25,6 +25,23 @@ const MATERIAL_COLORS = {
   metal: '#a8a29e', ceramic: '#c2703d', lithic: '#78716c', soil: '#8b6f3f',
 };
 
+// Shows the actual computed vector (first few dims + L2 norm), not just a
+// dims count — proof that pairing a different XRF reading (or a different
+// detection's ResNet crop) really does produce different numbers, right
+// here, before "Run Fusion Prediction" is even clicked. §33 follow-up to
+// the "feels unused" report: the embedding was always real, it just wasn't
+// visible that it changed.
+function EmbeddingPreview({ vec, n = 6 }) {
+  if (!vec || vec.length === 0) return null;
+  const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0));
+  const head = vec.slice(0, n).map((v) => v.toFixed(3));
+  return (
+    <p className="text-[10px] font-mono text-stone-400 truncate">
+      [{head.join(', ')}, …] · ‖v‖₂={norm.toFixed(3)}
+    </p>
+  );
+}
+
 function PredictionCard({ title, prediction, subtitle }) {
   if (!prediction) {
     return (
@@ -282,12 +299,17 @@ export default function FusionEngine() {
         </div>
       ) : (
       <>
-      {/* Inputs status */}
+      {/* Inputs status — shows the actual computed numbers, not just a dims
+          count, so pairing a different XRF reading here visibly changes
+          something even before "Run Fusion Prediction" is clicked. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">128-D ResNet embedding</p>
           {resnetEmbedding ? (
-            <p className="text-xs text-stone-600">✓ loaded ({resnetEmbedding.length} dims)</p>
+            <div className="space-y-1">
+              <p className="text-xs text-stone-600">✓ loaded ({resnetEmbedding.length} dims)</p>
+              <EmbeddingPreview vec={resnetEmbedding} />
+            </div>
           ) : (
             <p className="text-xs text-stone-400">
               Not loaded. <Link to="/detect" className="underline" style={{ color: '#C9971A' }}>Run detection</Link> then open a detection in{' '}
@@ -298,7 +320,10 @@ export default function FusionEngine() {
         <div className="bg-white border border-[#F0E9B8] rounded-xl p-4">
           <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-2">32-D XRF embedding</p>
           {xrfEmbedding ? (
-            <p className="text-xs text-stone-600">✓ loaded ({xrfEmbedding.length} dims)</p>
+            <div className="space-y-1">
+              <p className="text-xs text-stone-600">✓ loaded ({xrfEmbedding.length} dims)</p>
+              <EmbeddingPreview vec={xrfEmbedding} />
+            </div>
           ) : (
             <p className="text-xs text-stone-400">
               Not loaded. Enter elements in the{' '}
@@ -306,6 +331,17 @@ export default function FusionEngine() {
             </p>
           )}
         </div>
+      </div>
+
+      {/* Pipeline math — the actual formula each embedding above went
+          through, so "where do these numbers come from" isn't a black box.
+          Static description of the real code path (resnet18.js / xrfMLP.js
+          / fusionEngine.js), not illustrative pseudocode. */}
+      <div className="bg-[#F7F3D0] border border-[#E8DFA0] rounded-xl p-4 text-[11px] text-stone-500 space-y-1.5 font-mono">
+        <p className="text-stone-400 font-sans font-semibold text-xs mb-1">How each number above was calculated</p>
+        <p><span className="text-stone-700">ResNet-18:</span> crop → conv stack (resnet18.js) → global-avg-pool → <span className="text-stone-700">128-D vector</span> (shown above)</p>
+        <p><span className="text-stone-700">XRF MLP:</span> 8 elements → h=ReLU(W₁·x+b₁) [64-D hidden] → embedding=W₂·h+b₂ → <span className="text-stone-700">32-D vector</span> (shown above)</p>
+        <p><span className="text-stone-700">Fusion:</span> concat(128-D, 32-D) = <span className="text-stone-700">160-D</span> → linear(160→4) → softmax → per-class probability (see cards below after running)</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
