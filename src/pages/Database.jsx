@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLocation }  from 'react-router-dom';
 import { supabase }     from '../lib/supabase';
 import StatusBar        from '../components/StatusBar';
+import { parseRecordsCsv, buildTemplateCsv } from '../utils/recordsCsv';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -73,6 +74,12 @@ export default function Database() {
   const [submitting,  setSubmitting] = useState(false);
   const [submitMsg,   setSubmitMsg]  = useState('');
   const [submitError, setSubmitError]= useState('');
+
+  // §30 — Import CSV tab
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvParsed,   setCsvParsed]   = useState(null);  // parseRecordsCsv() result
+  const [csvImporting,setCsvImporting]= useState(false);
+  const [csvResult,   setCsvResult]   = useState(null);  // { inserted, failed, dbError }
 
   // ── Fetch records ──────────────────────────────────────────────────────────
   const fetchRecords = useCallback(async () => {
@@ -182,6 +189,48 @@ export default function Database() {
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // ── §30 — Import CSV ──────────────────────────────────────────────────────
+  function handleCsvFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvResult(null);
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => setCsvParsed(parseRecordsCsv(ev.target.result));
+    reader.onerror = () => setCsvParsed({ rows: [], validCount: 0, invalidCount: 0, parseError: 'Could not read file.' });
+    reader.readAsText(file);
+  }
+
+  function handleDownloadTemplate() {
+    const blob = new Blob([buildTemplateCsv()], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'aig_records_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleCsvImport() {
+    if (!csvParsed?.validCount) return;
+    setCsvImporting(true);
+    setCsvResult(null);
+    try {
+      const validRows = csvParsed.rows.filter((r) => r.row).map((r) => r.row);
+      const { error, data } = await supabase.from('gpr_xrf_records').insert(validRows).select('id');
+      if (error) throw error;
+      setCsvResult({ inserted: data?.length ?? validRows.length, failed: csvParsed.invalidCount, dbError: null });
+      setCsvParsed(null);
+      setCsvFileName('');
+      fetchRecords();
+      fetchCounts();
+    } catch (e) {
+      setCsvResult({ inserted: 0, failed: csvParsed.invalidCount, dbError: e.message ?? 'Import failed' });
+    } finally {
+      setCsvImporting(false);
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
@@ -197,7 +246,7 @@ export default function Database() {
           </p>
         </div>
         <div className="flex gap-2">
-          {['browse', 'add'].map((t) => (
+          {['browse', 'add', 'import'].map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -206,7 +255,7 @@ export default function Database() {
                   ? 'bg-[#C9971A] text-white'
                   : 'bg-[#F7F3D0] text-stone-500 hover:text-stone-900'}`}
             >
-              {t === 'browse' ? 'Browse Records' : '+ Add Record'}
+              {t === 'browse' ? 'Browse Records' : t === 'add' ? '+ Add Record' : '⇪ Import CSV'}
             </button>
           ))}
         </div>
@@ -646,6 +695,110 @@ export default function Database() {
           >
             {submitting ? 'Saving…' : 'Save Record'}
           </button>
+        </div>
+      )}
+
+      {/* ── IMPORT CSV TAB (§30) ── */}
+      {tab === 'import' && (
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-6 space-y-5">
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-sm text-stone-500">
+              Bulk-add confirmed records from a CSV file — one row per record. Columns are matched
+              case-insensitively (e.g. <code>material</code> or <code>xrf_material</code> both work).
+              Required column: <strong>material</strong> (must be one of {MATERIALS.join(', ')}).
+              <code>depth_m</code> is required unless <code>record_type</code> is <code>xrf_only</code>.
+            </p>
+            <button
+              onClick={handleDownloadTemplate}
+              className="shrink-0 px-3 py-1.5 bg-[#F7F3D0] hover:bg-[#F0E9B8] text-stone-700
+                         text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              Download CSV template
+            </button>
+          </div>
+
+          {/* File picker */}
+          <div>
+            <label className="text-xs text-stone-500 block mb-1">CSV file</label>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={handleCsvFile}
+              className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
+                         rounded-lg px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-md
+                         file:border-0 file:bg-[#C9971A] file:text-white file:text-xs
+                         file:font-semibold file:cursor-pointer cursor-pointer"
+            />
+            {csvFileName && <p className="text-xs text-stone-400 mt-1">Loaded: {csvFileName}</p>}
+          </div>
+
+          {/* Parse error (whole file rejected — e.g. no material column) */}
+          {csvParsed?.parseError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
+              {csvParsed.parseError}
+            </div>
+          )}
+
+          {/* Preview */}
+          {csvParsed && !csvParsed.parseError && (
+            <div className="space-y-3">
+              <div className="flex gap-4 text-xs font-semibold">
+                <span className="text-[#C9971A]">{csvParsed.validCount} row{csvParsed.validCount !== 1 ? 's' : ''} ready to import</span>
+                {csvParsed.invalidCount > 0 && (
+                  <span className="text-red-600">{csvParsed.invalidCount} row{csvParsed.invalidCount !== 1 ? 's' : ''} will be skipped</span>
+                )}
+              </div>
+
+              <div className="max-h-64 overflow-y-auto bg-[#FDFBF0] border border-[#F0E9B8] rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-[#F0E9B8] text-stone-500 uppercase tracking-wide sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Line</th>
+                      <th className="px-3 py-2 text-left">Site</th>
+                      <th className="px-3 py-2 text-left">Material</th>
+                      <th className="px-3 py-2 text-left">Depth</th>
+                      <th className="px-3 py-2 text-left">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#F0E9B8]">
+                    {csvParsed.rows.map((r) => (
+                      <tr key={r.line}>
+                        <td className="px-3 py-1.5 text-stone-400 font-mono">{r.line}</td>
+                        <td className="px-3 py-1.5 text-stone-600">{r.row?.site_id ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-stone-800 capitalize">{r.row?.xrf_material ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-stone-600">{r.row?.depth_m ?? '—'}</td>
+                        <td className="px-3 py-1.5">
+                          {r.error
+                            ? <span className="text-red-600">{r.error}</span>
+                            : <span className="text-[#C9971A]">✓ ok</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <button
+                onClick={handleCsvImport}
+                disabled={csvImporting || csvParsed.validCount === 0}
+                className="w-full py-2.5 bg-[#C9971A] hover:bg-[#a87d12] disabled:bg-stone-200
+                           text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                {csvImporting ? 'Importing…' : `Import ${csvParsed.validCount} record${csvParsed.validCount !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          )}
+
+          {/* Result */}
+          {csvResult && !csvResult.dbError && (
+            <p className="text-[#C9971A] text-sm">
+              ✓ Imported {csvResult.inserted} record{csvResult.inserted !== 1 ? 's' : ''}
+              {csvResult.failed > 0 ? ` · ${csvResult.failed} skipped (see errors above before importing next time)` : ''}.
+            </p>
+          )}
+          {csvResult?.dbError && (
+            <p className="text-red-600 text-sm">Import failed: {csvResult.dbError}</p>
+          )}
         </div>
       )}
     </div>
