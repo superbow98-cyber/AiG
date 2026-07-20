@@ -19,7 +19,7 @@ import {
 import { parseXRFCsv } from '../utils/xrfCsv';
 import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
 import { saveLabelledRecord } from '../lib/db';
-import { MATERIAL_CLASSES } from '../models/fusionEngine';
+import { MATERIAL_CLASSES, predictXrfOnly } from '../models/fusionEngine';
 
 const DEFAULT_ELEMENTS = XRF_ELEMENTS.reduce((acc, el) => {
   const { typical } = XRF_REFERENCE_RANGES[el];
@@ -218,9 +218,12 @@ export default function XRFWorkspace() {
     setSaving(true);
     setSaveMsg(null);
     try {
+      const aiPrediction = predictXrfOnly(result.embedding);
       const { error } = await saveLabelledRecord({
         groundTruthMaterial: groundTruth,
         xrfElements: elements,
+        aiPrediction: { label: aiPrediction.label, confidence: aiPrediction.confidence },
+        fusionScores: { xrfOnly: aiPrediction.scores },
         isSynthetic,
         ctx: { filename: csvFilename },
       });
@@ -229,7 +232,7 @@ export default function XRFWorkspace() {
         type: 'success',
         text: isSynthetic
           ? 'Saved and tagged synthetic — excluded from Stage 2 training queries by default, visible in Database → Browse.'
-          : 'Saved as an XRF-only labelled record (trains xrfOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
+          : 'Saved as an XRF-only labelled record (trains xrfOnlyHead once fusionEngine.train() is implemented — §20 Stage 2). predicted_material now recorded via xrfOnlyHead, so this row is eligible for Validation once confirmed.',
       });
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.message || String(err) });

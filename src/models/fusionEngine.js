@@ -120,6 +120,30 @@ export function predictMaterial(resnetEmbedding, xrfEmbedding, { model } = {}) {
 }
 
 /**
+ * Standalone GPR-only prediction — same gprOnlyHead used inside
+ * predictMaterial(), exposed on its own so pages that only ever have a
+ * ResNet embedding (no paired XRF reading yet) can still record an AI
+ * material guess instead of leaving predicted_material null forever.
+ * Consumed by: pages/ResNetSpatial.jsx handleSaveLabelledRecord().
+ */
+export function predictGprOnly(resnetEmbedding, { model } = {}) {
+  const m = model ?? getDefaultFusionEngine();
+  return classify(resnetEmbedding, m.gprOnlyHead);
+}
+
+/**
+ * Standalone XRF-only prediction — same xrfOnlyHead used inside
+ * predictMaterial(), exposed on its own so pages that only ever have a
+ * chemical embedding (no paired ResNet crop yet) can still record an AI
+ * material guess instead of leaving predicted_material null forever.
+ * Consumed by: pages/XRFWorkspace.jsx handleSaveLabelledRecord().
+ */
+export function predictXrfOnly(xrfEmbedding, { model } = {}) {
+  const m = model ?? getDefaultFusionEngine();
+  return classify(xrfEmbedding, m.xrfOnlyHead);
+}
+
+/**
  * Lightweight "explanation": which of the 160 input dimensions pushed the
  * predicted class logit the most (|weight[dim, predictedClass] * input[dim]|,
  * top 10). Real contribution analysis on the actual weights/activations used

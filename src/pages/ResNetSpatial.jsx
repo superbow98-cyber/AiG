@@ -29,7 +29,7 @@ import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
 import { saveLabelledRecord, listSavedXrfSamples } from '../lib/db';
 import { getChemicalEmbedding, XRF_ELEMENTS } from '../models/xrfMLP';
 import { parseXRFCsv } from '../utils/xrfCsv';
-import { MATERIAL_CLASSES } from '../models/fusionEngine';
+import { MATERIAL_CLASSES, predictGprOnly } from '../models/fusionEngine';
 
 // Matches the 3 hardcoded reflectors inside generateSyntheticScan() (traces=200,
 // samples=300, dt_ns=0.2, dx_m=0.02 defaults) so a standalone "sample" detection
@@ -413,9 +413,12 @@ export default function ResNetSpatial() {
     setSaving(true);
     setSaveMsg(null);
     try {
+      const aiPrediction = predictGprOnly(result.embedding);
       const { error } = await saveLabelledRecord({
         groundTruthMaterial: groundTruth,
         resnetEmbedding: result.embedding,
+        aiPrediction: { label: aiPrediction.label, confidence: aiPrediction.confidence },
+        fusionScores: { gprOnly: aiPrediction.scores },
         isSynthetic,
         ctx: { filename },
       });
@@ -424,7 +427,7 @@ export default function ResNetSpatial() {
         type: 'success',
         text: isSynthetic
           ? 'Saved and tagged synthetic — excluded from Stage 2 training queries by default, visible in Database → Browse.'
-          : 'Saved as a GPR-only labelled record (trains gprOnlyHead once fusionEngine.train() is implemented — §20 Stage 2).',
+          : 'Saved as a GPR-only labelled record (trains gprOnlyHead once fusionEngine.train() is implemented — §20 Stage 2). predicted_material now recorded via gprOnlyHead, so this row is eligible for Validation once confirmed.',
       });
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.message || String(err) });

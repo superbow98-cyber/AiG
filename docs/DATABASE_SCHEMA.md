@@ -62,3 +62,24 @@ Stored in Supabase (PostgreSQL).
 | dataset_messages | Live "Chat on Dataset" discussion (realtime enabled) |
 
 All new tables have Row Level Security policies; `gpr_scans` gains a `dataset_id` link.
+
+---
+
+## v3 additions (see `migrations/004_direct_messages.sql`)
+
+### New table: direct_messages
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| sender_id | uuid | auth.users(id) |
+| recipient_id | uuid | auth.users(id) |
+| body | text | Message text |
+| created_at | timestamptz | Sent time |
+
+Private 1:1 chat between two users, separate from `dataset_messages` (which is
+scoped to a shared dataset). RLS: select allowed for sender or recipient;
+insert allowed only if the sender is the authenticated user **and** an
+`accepted` `user_connections` row exists between sender and recipient — so
+messaging requires both users to have already connected. Realtime enabled the
+same way as `dataset_messages`. Backs `src/lib/db.js`'s
+`listDirectMessages()` / `sendDirectMessage()` / `subscribeDirectMessages()`.
