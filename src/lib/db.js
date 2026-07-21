@@ -103,7 +103,16 @@ export function detectionToRecord(det, ctx = {}) {
     depth_m:          det.depth_m ?? null,
     size_width_cm:    det.size_width_cm ?? null,
     size_height_cm:   det.size_height_cm ?? null,
-    xrf_material:     det.material ?? det.label ?? null,
+    // xrf_material is GROUND TRUTH (confirmed by real pXRF reading / excavation),
+    // not the AI's own guess. Results.jsx saves straight from Classify.jsx's
+    // classifier output — there is no real-world confirmation at that point,
+    // so this must stay null. Populating it with det.material here was copying
+    // the AI's prediction into the "ground truth" field, which made
+    // Validate.jsx compare the AI's guess against itself — always 100%
+    // accuracy, never a real validation. Real ground truth only exists via
+    // the human-confirmed §20 saveLabelledRecord() flow (ResNetSpatial /
+    // XRFWorkspace / FusionEngine "Save labelled record" panels).
+    xrf_material:     det.confirmed_material ?? null,
     xrf_elements:     det.xrf_elements ?? null,
     ai_prediction:    det.material ?? det.label ?? null,
     predicted_material: det.material ?? det.label ?? null,
