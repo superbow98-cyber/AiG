@@ -21,6 +21,7 @@ import DepthScale      from '../components/DepthScale';
 import HyperbolaOverlay from '../components/HyperbolaOverlay';
 import ObjectMap       from '../components/ObjectMap';
 import StatusBar       from '../components/StatusBar';
+import useResponsiveScanHeight from '../hooks/useResponsiveScanHeight';
 import { findPeaks } from '../models/knn';
 import { trainClassifier, predictClassifier } from '../models/svmModel';
 import { getMatrixRange } from '../utils/colormap';
@@ -47,6 +48,10 @@ export default function Detect() {
   const [statusMsg,   setStatusMsg]   = useState('');
   const [error,       setError]       = useState(null);
   const [opts,        setOpts]        = useState(DEFAULT_OPTS);
+
+  // Responsive canvas height — 480px at desktop, scales down on tablet/phone.
+  // Shared by DepthScale + BScanViewer so the axis and scan never drift apart.
+  const scanHeight = useResponsiveScanHeight(480);
 
   // ── BScanViewer view state (for HyperbolaOverlay sync) ────────────────────
   const [canvasSize,  setCanvasSize]  = useState({ width: 0, height: 0 });
@@ -234,7 +239,7 @@ export default function Detect() {
             samples={samples}
             dt_ns={metadata.dt_ns}
             velocity={velocity}
-            height_px={480}
+            height_px={scanHeight}
           />
           <div className="relative flex-1">
             <BScanViewer
@@ -242,7 +247,7 @@ export default function Detect() {
               colormap={colormap}
               minVal={minVal}
               maxVal={maxVal}
-              height={480}
+              height={scanHeight}
               velocity={velocity}
               dt_ns={metadata.dt_ns}
               onPixelHover={setHoverInfo}

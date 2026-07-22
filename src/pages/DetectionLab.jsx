@@ -21,6 +21,7 @@ import BScanViewer from '../components/BScanViewer';
 import DepthScale from '../components/DepthScale';
 import FileLoader from '../components/FileLoader';
 import useGPRData from '../hooks/useGPRData';
+import useResponsiveScanHeight from '../hooks/useResponsiveScanHeight';
 import { getMatrixRange } from '../utils/colormap';
 import { generateSyntheticScan } from '../utils/gprParser';
 import { quickAutoDetect } from '../utils/autoDetect';
@@ -141,6 +142,8 @@ export default function DetectionLab() {
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [showClassical, setShowClassical] = useState(true);
+  // Responsive canvas height — 440px at desktop, scales down on tablet/phone.
+  const scanHeight = useResponsiveScanHeight(440);
 
   const { min: minVal, max: maxVal } = matrix ? getMatrixRange(matrix) : { min: 0, max: 1 };
   const samples = metadata?.samples ?? matrix?.length ?? 0;
@@ -320,14 +323,14 @@ export default function DetectionLab() {
             </span>
           </div>
           <div className="relative flex">
-            <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={440} />
+            <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={scanHeight} />
             <div className="relative flex-1">
               <BScanViewer
                 matrix={matrix}
                 colormap={colormap}
                 minVal={minVal}
                 maxVal={maxVal}
-                height={440}
+                height={scanHeight}
                 velocity={velocity}
                 dt_ns={metadata.dt_ns}
                 onViewChange={({ panOffset: po, zoom: z, canvasWidth: cw, canvasHeight: ch }) => {
