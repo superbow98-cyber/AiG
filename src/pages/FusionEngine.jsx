@@ -22,7 +22,7 @@ import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
 import { saveLabelledRecord } from '../lib/db';
 
 const MATERIAL_COLORS = {
-  metal: '#a8a29e', ceramic: '#c2703d', lithic: '#78716c', soil: '#8b6f3f',
+  ceramic: '#c2703d', metal: '#a8a29e', bone: '#C9971A', stone: '#78716c', void: '#9CA3AF',
 };
 
 // Shows the actual computed vector (first few dims + L2 norm), not just a

@@ -13,7 +13,18 @@
 //
 // Consumed by: pages/FusionEngine.jsx
 
-export const MATERIAL_CLASSES = ['metal', 'ceramic', 'lithic', 'soil'];
+// §37: aligned with src/pages/Database.jsx's MATERIALS list (minus 'other',
+// which isn't a meaningful training class) so the "Confirmed material…"
+// dropdown here, in ResNetSpatial.jsx, and in XRFWorkspace.jsx all offer
+// the SAME five categories as Database.jsx's manual Add/CSV-import and the
+// Demo data view on /validate. Previously this was a separate, out-of-sync
+// list ['metal', 'ceramic', 'lithic', 'soil'] — bone and void were never
+// selectable anywhere in the AI Research Lab save-labelled-record panels,
+// only via Database.jsx directly. Classifier heads below derive their
+// output size from MATERIAL_CLASSES.length automatically (weights are
+// untrained/seeded, no saved weight file to break), so widening this to
+// 5 classes needs no other change in this file.
+export const MATERIAL_CLASSES = ['ceramic', 'metal', 'bone', 'stone', 'void'];
 
 function mulberry32(seed) {
   let a = seed >>> 0;
