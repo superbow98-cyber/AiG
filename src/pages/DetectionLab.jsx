@@ -385,10 +385,22 @@ export default function DetectionLab() {
             </button>
           </div>
         </div>
-        <div className={fullscreen ? 'relative flex flex-1 min-h-0 overflow-auto' : 'relative flex'}>
+        <div className={fullscreen ? 'relative flex flex-1 min-h-0 overflow-y-auto overflow-x-hidden' : 'relative flex'}>
           <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={effectiveScanHeight} />
-          <div className="relative flex-1">
+          <div className="relative flex-1 min-w-0">
+            {/* key={fullscreen ...} forces a full unmount/remount when toggling
+                full page — §40 v6. v5 kept the same BScanViewer instance and
+                relied on its ResizeObserver firing again after the surrounding
+                layout flipped to `fixed inset-0`; that worked in every local/
+                headless test but a real report showed the canvas + overlay
+                labels staying collapsed to a narrow strip after toggling on
+                an actual desktop browser — consistent with the observer
+                missing (or coalescing away) that one resize. Remounting
+                guarantees containerRef is created fresh, after the fullscreen
+                CSS is already applied, so the very first measurement is
+                already correct — no dependence on a resize event firing. */}
             <BScanViewer
+              key={fullscreen ? 'bscan-fullscreen' : 'bscan-normal'}
               matrix={matrix}
               colormap={colormap}
               minVal={minVal}

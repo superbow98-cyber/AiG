@@ -115,8 +115,18 @@ export default function BScanViewer({
   }, [matrix, canvasWidth]);
 
   // ── Resize observer ───────────────────────────────────────────────────────
+  // Read the container's actual width synchronously on mount (via
+  // getBoundingClientRect) instead of relying solely on ResizeObserver's
+  // first callback. Per spec RO does fire once immediately on observe(), but
+  // that callback is still async (queued as a microtask) — under an ancestor
+  // layout change happening in the same tick (e.g. toggling a `fixed`
+  // overlay on), there's a narrow window where the very first paint uses the
+  // stale default (800) before RO catches up. Reading the rect directly here
+  // removes that window entirely; RO still drives every update after this.
   useEffect(() => {
     if (!containerRef.current) return;
+    const initial = containerRef.current.getBoundingClientRect().width;
+    if (initial) setCanvasWidth(initial);
     const ro = new ResizeObserver(([entry]) => {
       setCanvasWidth(entry.contentRect.width || 800);
     });
