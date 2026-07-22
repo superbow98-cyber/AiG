@@ -142,8 +142,12 @@ export default function DetectionLab() {
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [showClassical, setShowClassical] = useState(true);
-  // Responsive canvas height — 440px at desktop, scales down on tablet/phone.
-  const scanHeight = useResponsiveScanHeight(440);
+  // Responsive canvas height. Raised the desktop ceiling from 440 to 720 —
+  // now that the Architecture panel (below) no longer shares a row with the
+  // canvas, there's no side panel forcing a low ceiling, and the hook's own
+  // viewport-chrome subtraction (see useResponsiveScanHeight.js) is what
+  // actually keeps it fitting the window, not this number.
+  const scanHeight = useResponsiveScanHeight(720);
 
   const { min: minVal, max: maxVal } = matrix ? getMatrixRange(matrix) : { min: 0, max: 1 };
   const samples = metadata?.samples ?? matrix?.length ?? 0;
@@ -313,46 +317,51 @@ export default function DetectionLab() {
         progress={running ? 60 : result ? 100 : 0}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* B-scan + overlay (spans 2 cols) */}
-        <div className="lg:col-span-2 bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-stone-600">B-scan — classical (dashed) vs AI (solid, colored by class)</span>
-            <span className="text-xs text-stone-400 bg-[#F7F3D0] border border-[#E8DFA0] rounded px-2 py-1">
-              grayscale · amplitude
-            </span>
-          </div>
-          <div className="relative flex">
-            <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={scanHeight} />
-            <div className="relative flex-1">
-              <BScanViewer
-                matrix={matrix}
-                colormap={colormap}
-                minVal={minVal}
-                maxVal={maxVal}
-                height={scanHeight}
-                velocity={velocity}
-                dt_ns={metadata.dt_ns}
-                onViewChange={({ panOffset: po, zoom: z, canvasWidth: cw, canvasHeight: ch }) => {
-                  setPanOffset(po); setZoom(z); setCanvasSize({ width: cw, height: ch });
-                }}
-              />
-              <HyperbolaOverlay
-                detections={combinedOverlayDetections}
-                canvasWidth={canvasSize.width}
-                canvasHeight={canvasSize.height}
-                totalTraces={traces}
-                totalSamples={samples}
-                panOffset={panOffset}
-                zoom={zoom}
-              />
-            </div>
+      <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-stone-600">B-scan — classical (dashed) vs AI (solid, colored by class)</span>
+          <span className="text-xs text-stone-400 bg-[#F7F3D0] border border-[#E8DFA0] rounded px-2 py-1">
+            grayscale · amplitude
+          </span>
+        </div>
+        <div className="relative flex">
+          <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={scanHeight} />
+          <div className="relative flex-1">
+            <BScanViewer
+              matrix={matrix}
+              colormap={colormap}
+              minVal={minVal}
+              maxVal={maxVal}
+              height={scanHeight}
+              velocity={velocity}
+              dt_ns={metadata.dt_ns}
+              onViewChange={({ panOffset: po, zoom: z, canvasWidth: cw, canvasHeight: ch }) => {
+                setPanOffset(po); setZoom(z); setCanvasSize({ width: cw, height: ch });
+              }}
+            />
+            <HyperbolaOverlay
+              detections={combinedOverlayDetections}
+              canvasWidth={canvasSize.width}
+              canvasHeight={canvasSize.height}
+              totalTraces={traces}
+              totalSamples={samples}
+              panOffset={panOffset}
+              zoom={zoom}
+            />
           </div>
         </div>
+      </div>
 
-        {/* Architecture panel */}
-        <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-400">Architecture — {method}</p>
+      {/* Architecture panel — previously sat in a side column next to the
+          B-scan (lg:grid-cols-3), squeezing the canvas into a narrow strip
+          and visually competing with it. Now a collapsed-by-default section
+          of its own below the B-scan, so the canvas gets the full row and
+          this reference info is one click away instead of always on screen. */}
+      <details className="bg-white border border-[#F0E9B8] rounded-xl p-4">
+        <summary className="cursor-pointer text-xs font-bold uppercase tracking-wider text-stone-400 select-none">
+          Architecture — {method} (click to expand)
+        </summary>
+        <div className="mt-3 space-y-3">
           <div className="text-xs text-stone-600 space-y-1.5 font-mono">
             <p>{arch.input}</p>
             <p>↓ {arch.backbone}</p>
@@ -367,7 +376,7 @@ export default function DetectionLab() {
             </div>
           )}
         </div>
-      </div>
+      </details>
 
       {/* Per-class stats */}
       {result && (
