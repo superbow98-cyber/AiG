@@ -228,6 +228,25 @@ export default function BScanViewer({
 
   return (
     <div ref={containerRef} className="w-full overflow-hidden rounded-xl border border-[#F0E9B8]">
+      {/* style={{ width: '100%' }} is the actual fix for "I still have to zoom/
+          drag to see the whole image" — previously the canvas had NO CSS
+          width, so its on-screen size was governed entirely by the `width`
+          attribute (the canvasWidth React state, set from a ResizeObserver
+          measurement). Any lag or momentary staleness in that measurement —
+          on first paint, after a layout shift, on any device — made the
+          canvas ELEMENT ITSELF narrower than its container, leaving blank
+          space to its right (canvas is a block element, left-aligned by
+          default) that only "fixed itself" once canvasWidth state caught up
+          — which is exactly why zooming the browser (forcing a fresh resize
+          event) appeared to fix it. With width:100% here, the canvas's
+          on-screen box is set by pure CSS layout — instant, synchronous,
+          zero dependency on any JS measurement being ready in time. The
+          `width`/`height` attributes below still control the internal pixel
+          buffer (draw resolution) via canvasWidth state as before; the
+          browser auto-stretches that buffer to fill the CSS box, so even a
+          stale/smaller backing resolution still visually fills the full
+          frame immediately — it just sharpens up once the real
+          measurement lands, instead of leaving a gap. */}
       <canvas
         ref={canvasRef}
         width={canvasWidth}
@@ -237,8 +256,8 @@ export default function BScanViewer({
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
         onWheel={onWheel}
-        className="block cursor-grab active:cursor-grabbing"
-        style={{ touchAction: 'none' }}
+        className="block w-full cursor-grab active:cursor-grabbing"
+        style={{ touchAction: 'none', height: `${height}px` }}
       />
     </div>
   );
