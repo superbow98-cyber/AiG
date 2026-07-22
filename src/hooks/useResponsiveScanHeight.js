@@ -3,44 +3,54 @@
 // and its detection overlay (HyperbolaOverlay) always agree on ONE pixel
 // height — across Detect.jsx, DetectionLab.jsx and ResNetSpatial.jsx.
 //
-// Previously each page hardcoded a single px height (480 / 440 / 360) that
-// never changed with viewport size. On a laptop that's fine, but on a phone
-// (or a resized/narrow browser window) a fixed 440-480px tall canvas either
-// overflows the viewport (forcing awkward vertical scrolling to see the
-// bottom of the scan) or leaves the B-scan looking squashed/tiny relative to
-// the surrounding UI once the width has already shrunk to fit the screen.
+// v1 of this hook only scaled height off viewport WIDTH breakpoints, so on
+// a wide-but-short window (a laptop browser that isn't maximized, or a
+// laptop screen at all — the reported bug) the canvas kept its full
+// desktopHeight (440/480px) even though the window itself had nowhere near
+// that much vertical room left after the header, detector controls and
+// page chrome. Result: the B-scan visibly overflowed the bottom of the
+// browser window and needed page-scrolling to see the rest of it, on a
+// screen that isn't a phone at all.
 //
-// `desktopHeight` is each page's original tuned height (kept as-is at
-// desktop widths, so nothing changes there). Below that, height scales down
-// with viewport width in three steps, matching Tailwind's own sm/lg
-// breakpoints so the canvas, axis and overlay resize in lockstep with the
-// rest of the responsive layout:
-//   < 480px  (small phone)      → ~42% of desktopHeight
-//   < 640px  (phone, Tailwind sm)→ ~52% of desktopHeight
-//   < 1024px (tablet, Tailwind lg)→ ~72% of desktopHeight
-//   >= 1024px (laptop/desktop)  → desktopHeight, unchanged
+// Fix: compute height from BOTH width breakpoints (unchanged from v1, still
+// what drives phone/tablet sizing) AND a viewport-HEIGHT cap — the canvas
+// is never allowed to exceed a fraction of window.innerHeight, so it always
+// fits inside whatever window the person actually has open, laptop or
+// phone, maximized or not.
 //
-// A floor of 200px keeps the hyperbolas readable even on the smallest
-// screens instead of collapsing into an unusable sliver.
+// `desktopHeight` is each page's original tuned height — the ceiling used
+// only when there's enough vertical room for it.
 import { useEffect, useState } from 'react';
 
-const MIN_HEIGHT = 200;
+const MIN_HEIGHT = 180;
+// The canvas may use at most this fraction of the window's visible height —
+// leaves room for the header, detector controls, and side panels above it.
+const VIEWPORT_HEIGHT_FRACTION = 0.5;
 
-function computeHeight(desktopHeight, width) {
+function computeHeight(desktopHeight, width, viewportHeight) {
   let ratio = 1;
   if (width < 480)       ratio = 0.42;
   else if (width < 640)  ratio = 0.52;
   else if (width < 1024) ratio = 0.72;
-  return Math.max(MIN_HEIGHT, Math.round(desktopHeight * ratio));
+
+  let height = Math.round(desktopHeight * ratio);
+  const viewportCap = Math.round(viewportHeight * VIEWPORT_HEIGHT_FRACTION);
+  height = Math.min(height, viewportCap);
+  return Math.max(MIN_HEIGHT, height);
 }
 
 export default function useResponsiveScanHeight(desktopHeight = 480) {
   const [height, setHeight] = useState(() =>
-    computeHeight(desktopHeight, typeof window !== 'undefined' ? window.innerWidth : 1280)
+    computeHeight(
+      desktopHeight,
+      typeof window !== 'undefined' ? window.innerWidth : 1280,
+      typeof window !== 'undefined' ? window.innerHeight : 800
+    )
   );
 
   useEffect(() => {
-    const onResize = () => setHeight(computeHeight(desktopHeight, window.innerWidth));
+    const onResize = () =>
+      setHeight(computeHeight(desktopHeight, window.innerWidth, window.innerHeight));
     onResize();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
