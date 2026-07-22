@@ -15,6 +15,7 @@
 
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import StatusBar from '../components/StatusBar';
 import HyperbolaOverlay from '../components/HyperbolaOverlay';
 import BScanViewer from '../components/BScanViewer';
@@ -148,6 +149,48 @@ export default function DetectionLab() {
   // viewport-chrome subtraction (see useResponsiveScanHeight.js) is what
   // actually keeps it fitting the window, not this number.
   const scanHeight = useResponsiveScanHeight(720);
+
+  // §40 v5 — "besar 1 page tanpa perlu zoom in/out": v2-v4 kept the B-scan
+  // fitted within the normal page flow, so it was always sharing the window
+  // with the header/controls above it — never truly "1 page". Fullscreen
+  // mode takes it out of that flow entirely: fixed overlay, full viewport,
+  // with only a slim exit bar above it. BScanViewer already fits width to
+  // its container (§22 fix) and this hook's height feeds DepthScale +
+  // HyperbolaOverlay too, so flipping just this one height value makes all
+  // three re-fit together with no manual scroll-zoom needed.
+  const [fullscreen, setFullscreen] = useState(false);
+  const [windowHeight, setWindowHeight] = useState(
+    typeof window !== 'undefined' ? window.innerHeight : 900
+  );
+  useEffect(() => {
+    const onResize = () => setWindowHeight(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+  // Fullscreen bar only needs room for a title + close button (~64px) plus
+  // a little breathing room top/bottom — far less chrome than the full page
+  // reserves, which is the whole point.
+  const FULLSCREEN_RESERVED_PX = 96;
+  const fullscreenHeight = Math.max(240, windowHeight - FULLSCREEN_RESERVED_PX);
+  const effectiveScanHeight = fullscreen ? fullscreenHeight : scanHeight;
+
+  // Esc to exit + lock page scroll while fullscreen so the overlay behaves
+  // like an actual "1 page" view instead of a tall panel you can scroll past.
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setFullscreen(false); };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [fullscreen]);
 
   const { min: minVal, max: maxVal } = matrix ? getMatrixRange(matrix) : { min: 0, max: 1 };
   const samples = metadata?.samples ?? matrix?.length ?? 0;
@@ -317,22 +360,40 @@ export default function DetectionLab() {
         progress={running ? 60 : result ? 100 : 0}
       />
 
-      <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
+      <div
+        className={
+          fullscreen
+            ? 'fixed inset-0 z-50 flex flex-col p-3 md:p-4'
+            : 'bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3'
+        }
+        style={fullscreen ? { background: '#FDFBF0' } : undefined}
+      >
+        <div className="flex items-center justify-between shrink-0 mb-3">
           <span className="text-sm font-semibold text-stone-600">B-scan — classical (dashed) vs AI (solid, colored by class)</span>
-          <span className="text-xs text-stone-400 bg-[#F7F3D0] border border-[#E8DFA0] rounded px-2 py-1">
-            grayscale · amplitude
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-stone-400 bg-[#F7F3D0] border border-[#E8DFA0] rounded px-2 py-1">
+              grayscale · amplitude
+            </span>
+            <button
+              onClick={() => setFullscreen((v) => !v)}
+              title={fullscreen ? 'Exit full page (Esc)' : 'View B-scan full page'}
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors"
+              style={{ borderColor: '#E8DFA0', color: '#92692A', background: '#F7F3D0' }}
+            >
+              {fullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              {fullscreen ? 'Exit full page' : 'Full page'}
+            </button>
+          </div>
         </div>
-        <div className="relative flex">
-          <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={scanHeight} />
+        <div className={fullscreen ? 'relative flex flex-1 min-h-0 overflow-auto' : 'relative flex'}>
+          <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={effectiveScanHeight} />
           <div className="relative flex-1">
             <BScanViewer
               matrix={matrix}
               colormap={colormap}
               minVal={minVal}
               maxVal={maxVal}
-              height={scanHeight}
+              height={effectiveScanHeight}
               velocity={velocity}
               dt_ns={metadata.dt_ns}
               onViewChange={({ panOffset: po, zoom: z, canvasWidth: cw, canvasHeight: ch }) => {
@@ -351,6 +412,7 @@ export default function DetectionLab() {
           </div>
         </div>
       </div>
+
 
       {/* Architecture panel — previously sat in a side column next to the
           B-scan (lg:grid-cols-3), squeezing the canvas into a narrow strip
