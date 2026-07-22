@@ -385,6 +385,59 @@ export default function DetectionLab() {
             </button>
           </div>
         </div>
+
+        {/* §38 fix — the fullscreen overlay is `fixed inset-0 z-50`, so the
+            real Detector/Threshold/Run controls above (in normal page flow)
+            sit *behind* it and can't be clicked while full page is open —
+            previously the only way to run the detector or change the
+            threshold was to exit full page first. This compact toolbar
+            duplicates just those controls, wired to the same state/handlers,
+            so full page is actually usable standalone instead of view-only. */}
+        {fullscreen && (
+          <div className="flex flex-wrap items-center gap-3 shrink-0 mb-3 bg-white border border-[#F0E9B8] rounded-lg px-3 py-2">
+            <select
+              value={method}
+              onChange={(e) => { setMethod(e.target.value); setResult(null); }}
+              className="bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 rounded-lg px-2 py-1.5 text-xs"
+            >
+              {DETECTOR_METHODS.map((m) => (
+                <option key={m.key} value={m.key}>{m.label}</option>
+              ))}
+            </select>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-stone-500 whitespace-nowrap">Conf ≥</span>
+              <input
+                type="range" min={0.1} max={0.9} step={0.05}
+                value={confThreshold}
+                onChange={(e) => setConfThreshold(Number(e.target.value))}
+                className="w-24 accent-[#C9971A]"
+              />
+              <span className="text-[11px] font-mono text-stone-700 w-8">{confThreshold.toFixed(2)}</span>
+            </div>
+
+            <button
+              onClick={runAiDetection}
+              disabled={running}
+              className="px-3 py-1.5 bg-[#C9971A] hover:bg-[#a87d12] disabled:bg-stone-200
+                         text-white text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+            >
+              {running ? 'Running…' : `Run ${DETECTOR_METHODS.find((m) => m.key === method)?.label.split(' ')[0]}`}
+            </button>
+
+            <label className="flex items-center gap-1.5 text-[11px] text-stone-500 whitespace-nowrap">
+              <input type="checkbox" checked={showClassical} onChange={(e) => setShowClassical(e.target.checked)} />
+              show classical
+            </label>
+
+            {result && (
+              <span className="text-[11px] text-stone-400 ml-auto whitespace-nowrap">
+                {result.stats.count} detections · ≥{(confThreshold * 100).toFixed(0)}%
+              </span>
+            )}
+          </div>
+        )}
+
         <div className={fullscreen ? 'relative flex flex-1 min-h-0 overflow-y-auto overflow-x-hidden' : 'relative flex'}>
           <DepthScale samples={samples} dt_ns={metadata.dt_ns} velocity={velocity} height_px={effectiveScanHeight} />
           <div className="relative flex-1 min-w-0">
