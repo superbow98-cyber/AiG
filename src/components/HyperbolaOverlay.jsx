@@ -59,7 +59,12 @@ export default function HyperbolaOverlay({
       }}
     >
       {detections.map((det, i) => {
-        const color = getColor(det.label);
+        // statusColor/statusText (§39) let a caller show a neutral
+        // processing-status pill (e.g. "Extracted"/"Pending") instead of
+        // forcing the box through the material-name palette below — used by
+        // ResNet-18 Spatial AI, which has no classifier of its own and was
+        // previously faking "stone"/"void" labels just to get a colour.
+        const color = det.statusColor ?? getColor(det.label);
 
         // Convert trace/sample coords → pixel coords
         const x1 = toPixel(det.trace - det.halfWidthTraces,  totalTraces,  canvasWidth,  zoom, panOffset.x);
@@ -72,9 +77,11 @@ export default function HyperbolaOverlay({
         const boxW = Math.max(Math.abs(x2 - x1), 8);
         const boxH = Math.max(Math.abs(y2 - y1), 8);
 
-        const labelText = det.label
-          ? `${det.label} ${Math.round((det.confidence ?? 0) * 100)}%`
-          : `Object ${i + 1}`;
+        const labelText = det.statusText
+          ? det.statusText
+          : det.label
+            ? `${det.label} ${Math.round((det.confidence ?? 0) * 100)}%`
+            : `Object ${i + 1}`;
 
         // Keep label inside SVG bounds
         const labelX = Math.min(boxX + 4, canvasWidth - 80);

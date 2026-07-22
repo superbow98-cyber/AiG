@@ -32,6 +32,7 @@ import {
   ARCH_SUMMARIES,
   compareDetections,
 } from '../models/detectionModels';
+import { useScanWorkspace } from '../context/ScanWorkspaceContext';
 
 const MATERIAL_COLORS = {
   ceramic: '#34d399', metal: '#f87171', stone: '#a78bfa', void: '#38bdf8', unknown: '#94a3b8',
@@ -55,14 +56,35 @@ export default function DetectionLab() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state;
+  const scanWorkspace = useScanWorkspace();
 
+  // §39: fallback chain now includes the shared scan workspace, so if the
+  // person already loaded a scan on ResNet-18 Spatial AI (or here earlier)
+  // and simply clicked "AI Detection Lab" in the sidebar — instead of an
+  // explicit "Send to X" link — they see the SAME scan/boxes here rather
+  // than being asked to upload again or silently getting a second,
+  // independently-detected set.
   const [localScan, setLocalScan] = useState(null);
-  const matrix = state?.matrix ?? localScan?.matrix ?? null;
-  const metadata = state?.metadata ?? localScan?.metadata ?? null;
-  const classicalDetections = state?.detections ?? localScan?.detections ?? [];
-  const filename = state?.filename ?? (localScan ? localScan.filename ?? 'synthetic demo scan' : 'scan');
-  const scanId = state?.scanId ?? null;
-  const velocity = state?.velocity ?? 0.1;
+  const matrix = state?.matrix ?? localScan?.matrix ?? scanWorkspace.matrix ?? null;
+  const metadata = state?.metadata ?? localScan?.metadata ?? scanWorkspace.metadata ?? null;
+  const classicalDetections = state?.detections ?? localScan?.detections ?? scanWorkspace.classicalDetections ?? [];
+  const filename = state?.filename ?? (localScan ? localScan.filename ?? 'synthetic demo scan' : scanWorkspace.filename ?? 'scan');
+  const scanId = state?.scanId ?? scanWorkspace.scanId ?? null;
+  const velocity = state?.velocity ?? scanWorkspace.velocity ?? 0.1;
+
+  // Publish whatever scan we're showing into the shared workspace, so other
+  // AI Research Lab pages opened afterwards pick up the same one. Guarded by
+  // filename so this only fires once per genuinely new scan, not every
+  // render (setScanBase itself is stable/memoised, but matrix/metadata are
+  // new array references each render otherwise).
+  const publishedFilenameRef = useRef(null);
+  useEffect(() => {
+    if (!matrix || !metadata) return;
+    if (publishedFilenameRef.current === filename) return;
+    publishedFilenameRef.current = filename;
+    scanWorkspace.setScanBase({ matrix, metadata, filename, scanId, velocity, classicalDetections });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrix, metadata, filename]);
 
   // ── Standalone upload — same pattern as ResNet-18 Spatial AI (§12a):
   // reuse FileLoader.jsx to parse a real GPR file, then auto-run the shared
@@ -137,6 +159,11 @@ export default function DetectionLab() {
       const model = getDefaultDetector(method);
       const out = runDetector(matrix, metadata, { method, model, confThreshold });
       setResult(out);
+      // §39: these are real label+confidence classifications (as real as an
+      // untrained-weights demo gets) — publish them so ResNet-18 Spatial AI,
+      // opened standalone afterwards, can show the same boxes/labels instead
+      // of independently re-detecting and faking a material name.
+      scanWorkspace.setAiDetections(out.detections);
       setRunning(false);
     }, 0);
   }

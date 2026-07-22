@@ -26,6 +26,7 @@ import { sampleToDepth } from '../utils/depthCalc';
 import { getMatrixRange } from '../utils/colormap';
 import { quickAutoDetect } from '../utils/autoDetect';
 import { useFusionWorkspace } from '../context/FusionWorkspaceContext';
+import { useScanWorkspace } from '../context/ScanWorkspaceContext';
 import { saveLabelledRecord, listSavedXrfSamples } from '../lib/db';
 import { getChemicalEmbedding, XRF_ELEMENTS } from '../models/xrfMLP';
 import { parseXRFCsv } from '../utils/xrfCsv';
@@ -104,15 +105,38 @@ export default function ResNetSpatial() {
   const location = useLocation();
   const navigate = useNavigate();
   const { setResnet, setXrf } = useFusionWorkspace();
+  const scanWorkspace = useScanWorkspace();
   const state = location.state;
 
+  // §39: fallback chain now includes the shared scan workspace. If AI
+  // Detection Lab already classified this scan (real labels/confidence),
+  // prefer that over the unlabelled classical boxes, so this page shows the
+  // SAME classification instead of having nothing to show and faking one.
   const [localScan, setLocalScan] = useState(null);
-  const matrix = state?.matrix ?? localScan?.matrix ?? null;
-  const detections = state?.detections ?? localScan?.detections ?? [];
-  const metadata = state?.metadata ?? localScan?.metadata ?? null;
-  const filename = state?.filename ?? (localScan ? localScan.filename ?? 'synthetic demo scan' : 'scan');
-  const scanId = state?.scanId ?? null;
-  const velocity = state?.velocity ?? 0.1;
+  const matrix = state?.matrix ?? localScan?.matrix ?? scanWorkspace.matrix ?? null;
+  const detections = state?.detections ?? localScan?.detections
+    ?? scanWorkspace.aiDetections ?? scanWorkspace.classicalDetections ?? [];
+  const metadata = state?.metadata ?? localScan?.metadata ?? scanWorkspace.metadata ?? null;
+  const filename = state?.filename ?? (localScan ? localScan.filename ?? 'synthetic demo scan' : scanWorkspace.filename ?? 'scan');
+  const scanId = state?.scanId ?? scanWorkspace.scanId ?? null;
+  const velocity = state?.velocity ?? scanWorkspace.velocity ?? 0.1;
+
+  // Publish this scan into the shared workspace too, so AI Detection Lab (or
+  // XRF Workspace) opened afterwards picks up the same one. Only classical
+  // detections get published here — this page has no classifier of its own,
+  // so it must never publish fabricated labels as if they were real
+  // aiDetections.
+  const publishedFilenameRef = useRef(null);
+  useEffect(() => {
+    if (!matrix || !metadata) return;
+    if (publishedFilenameRef.current === filename) return;
+    publishedFilenameRef.current = filename;
+    scanWorkspace.setScanBase({
+      matrix, metadata, filename, scanId, velocity,
+      classicalDetections: state?.detections ?? localScan?.detections ?? scanWorkspace.classicalDetections ?? [],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrix, metadata, filename]);
 
   function loadSampleScan() {
     const scan = generateSyntheticScan();
@@ -356,13 +380,26 @@ export default function ResNetSpatial() {
     }, 0);
   }
 
-  // Detections annotated with each one's material-agnostic ResNet status
-  // (ran / not yet) so HyperbolaOverlay can label them on the shared B-scan.
-  const overlayDetections = detections.map((d, i) => ({
-    ...d,
-    label: batchResults[d.id] ? 'stone' : 'void', // stone=violet(ran), void=sky(pending) — see HyperbolaOverlay palette
-    confidence: batchResults[d.id] ? 1 : 0,
-  }));
+  // Detections annotated for the shared B-scan overlay (§39, fixes §38's
+  // report). ResNet-18 has no classifier — it only extracts an embedding —
+  // so it must never invent a material name. Two cases:
+  //  1. `d.label` already set → this detection was really classified by AI
+  //     Detection Lab's deep-detector head (arrived via location.state or
+  //     the shared scan workspace's aiDetections). Pass its real
+  //     label+confidence through unchanged.
+  //  2. No `d.label` → plain classical box, nothing has classified it. Show
+  //     a neutral processing-status pill via statusText/statusColor
+  //     (violet = embedding extracted, slate = pending) instead of
+  //     borrowing a material name + fake 100%/0% confidence.
+  const overlayDetections = detections.map((d) => (
+    d.label
+      ? d
+      : {
+          ...d,
+          statusText: batchResults[d.id] ? 'Extracted' : 'Pending',
+          statusColor: batchResults[d.id] ? '#a78bfa' : '#94a3b8',
+        }
+  ));
 
   function sendToFusion() {
     if (!result) return;

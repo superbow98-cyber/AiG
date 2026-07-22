@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { FusionWorkspaceProvider } from './context/FusionWorkspaceContext'
+import { ScanWorkspaceProvider } from './context/ScanWorkspaceContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 
@@ -29,6 +30,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
       <FusionWorkspaceProvider>
+      <ScanWorkspaceProvider>
         <Routes>
           {/* Public */}
           <Route path="/" element={<Home />} />
@@ -59,6 +61,7 @@ export default function App() {
             </Route>
           </Route>
         </Routes>
+      </ScanWorkspaceProvider>
       </FusionWorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>
