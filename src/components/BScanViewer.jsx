@@ -51,6 +51,12 @@ export default function BScanViewer({
     os.height     = samples;
     os.getContext('2d').putImageData(new ImageData(pixels, traces, samples), 0, 0);
     offscreenRef.current = os;
+    // Redraw immediately with whatever scale is already current (colormap-only
+    // changes shouldn't reset the user's pan/zoom) — `offscreenRef.current`
+    // is a ref, so it can never be a real effect dependency; calling redraw
+    // here directly is what actually keeps a colormap switch in sync.
+    redraw();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matrix, colormap, minVal, maxVal]);
 
   // ── Notify parent of view state ───────────────────────────────────────────
@@ -87,23 +93,32 @@ export default function BScanViewer({
     });
   }, [canvasWidth, height]);
 
-  // Redraw when offscreen cache or canvas size changes
-  useEffect(() => { redraw(); }, [offscreenRef.current, canvasWidth, height, redraw]);
-
-  // Notify parent after redraw when canvasWidth/height change
-  useEffect(() => { notifyViewChange(); }, [canvasWidth, height, notifyViewChange]);
-
-  // ── Fit-to-width ───────────────────────────────────────────────────────────
-  // Previously the initial scale was hardcoded to 1 (1 screen pixel per GPR
-  // trace), so any scan with fewer traces than the container's pixel width
-  // (almost always true) only filled a fraction of the canvas on the left,
-  // while HyperbolaOverlay (which draws relative to the FULL container width)
-  // still spanned edge-to-edge — the two were never aligned until the user
-  // manually scroll-zoomed out. Recomputing scale = canvasWidth / traces
-  // whenever a scan loads or the container resizes (e.g. phone rotation,
-  // different screen size) makes the B-scan always fill the frame exactly,
-  // no manual zoom required. Scroll-wheel zoom still works normally after
-  // this from a correctly-framed starting point.
+  // ── Fit-to-width + redraw + notify — one atomic effect ────────────────────
+  // BUG THIS FIXES ("B-scan collapses to a narrow strip pushed to the right
+  // edge until you manually zoom the browser out/in"): this used to be TWO
+  // separate effects, both depending on canvasWidth —
+  //   1. `redraw()` on [canvasWidth, height, ...]
+  //   2. this fit-to-width block on [matrix, canvasWidth], which recomputes
+  //      viewRef.current.scale = canvasWidth / traces
+  // React runs effects in declaration order within a commit. Effect 1 ran
+  // FIRST, so on every canvasWidth change (e.g. ResizeObserver catching the
+  // container's real width after fullscreen toggle, sidebar collapse, or
+  // just initial layout settling) it called redraw() using whatever scale
+  // was already in viewRef.current — computed for the OLD, usually smaller,
+  // canvasWidth — while displayWidth/clampedOffset used the NEW, larger
+  // canvasWidth. That produces exactly the visual bug reported: a narrow
+  // strip of B-scan drawn at a large positive offset (clampedOffset =
+  // canvasWidth − displayWidth, which is large when displayWidth is small),
+  // i.e. pushed against the right edge with the rest of the canvas blank.
+  // Effect 2 then corrected viewRef.current.scale, but by then the frame
+  // ordering was no longer guaranteed self-healing on every browser/timing
+  // combination — this is the same shape of bug §40 v6 tried to patch via a
+  // forced remount, which helped the fullscreen-toggle case specifically but
+  // not this more general one (any canvasWidth change, including plain page
+  // load, hits the same race). Merging both concerns into a single effect
+  // means scale is always recomputed and the draw scheduled in one
+  // synchronous pass — there is no longer a second effect that can observe
+  // (or draw from) a stale scale against a fresh width.
   useEffect(() => {
     if (!matrix?.length || !canvasWidth) return;
     const traces = matrix[0].length;
@@ -112,7 +127,7 @@ export default function BScanViewer({
     redraw();
     notifyViewChange();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matrix, canvasWidth]);
+  }, [matrix, canvasWidth, height]);
 
   // ── Resize observer ───────────────────────────────────────────────────────
   // Read the container's actual width synchronously on mount (via
