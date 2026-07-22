@@ -106,8 +106,17 @@ export function calibration(pairs, nBuckets = 5) {
 }
 
 // One-call summary for the Validation page.
-export function evaluate(pairs) {
-  const labels = collectLabels(pairs);
+// canonicalLabels (optional) — pass MATERIAL_CLASSES so every official
+// material class shows up in the confusion matrix / per-material table even
+// with zero records, instead of only the materials that happen to already
+// have a validated pair. Any label present in the data but NOT in
+// canonicalLabels (e.g. a legacy value) is still appended, so real data is
+// never hidden — this only ever adds rows/columns, never removes them.
+export function evaluate(pairs, canonicalLabels = null) {
+  const dataLabels = collectLabels(pairs);
+  const labels = canonicalLabels
+    ? [...new Set([...canonicalLabels, ...dataLabels])]
+    : dataLabels;
   return {
     n: pairs.filter((p) => p.predicted != null && p.actual != null).length,
     labels,

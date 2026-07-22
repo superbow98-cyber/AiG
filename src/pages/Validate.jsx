@@ -9,6 +9,11 @@ import { useAuth } from '../context/AuthContext';
 import { evaluate } from '../utils/metrics';
 import html2canvas from 'html2canvas';
 import { Download, RefreshCw, Database, FlaskConical } from 'lucide-react';
+// Canonical material vocabulary (§37) — pass to evaluate() so the confusion
+// matrix / per-material table always shows all 5 official classes, even
+// ones with zero validated records yet, instead of only whatever happens
+// to already be in the database.
+import { MATERIAL_CLASSES } from '../models/fusionEngine';
 
 // ── Demo data (48 validated objects) ─────────────────────────────────────────
 const DEMO_PAIRS = [
@@ -87,7 +92,7 @@ export default function Validate() {
         predicted:  r.predicted_material,
         confidence: r.predicted_confidence ?? 0.5,
       }));
-      setResult(evaluate(pairs));
+      setResult(evaluate(pairs, MATERIAL_CLASSES));
       setSource('db');
     } catch (e) {
       setResult(null);
@@ -98,7 +103,7 @@ export default function Validate() {
   }
 
   function loadDemo() {
-    setResult(evaluate(DEMO_PAIRS));
+    setResult(evaluate(DEMO_PAIRS, MATERIAL_CLASSES));
     setSource('demo');
     setError(null);
   }
