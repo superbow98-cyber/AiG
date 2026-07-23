@@ -56,6 +56,19 @@ export default function ResultCard({ object, index, onSaveToDb }) {
             >
               {(conf * 100).toFixed(0)}% conf
             </span>
+            {/* §41 — warn when this label isn't backed by enough confirmed
+                reference records (< MIN_SAMPLES_PER_CLASS). Previously
+                predictMaterial() computed this but Classify.jsx dropped it
+                before it ever reached the UI. */}
+            {object.insufficientData && (
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1"
+                style={{ color: '#b45309', borderColor: '#fbbf24', background: '#fffbeb' }}
+                title={`Only ${object.classSampleCount ?? 0} confirmed "${mat}" record(s) in the reference database — this label is a thin/low-confidence match, not yet data-sufficient.`}
+              >
+                ⚠ low sample ({object.classSampleCount ?? 0})
+              </span>
+            )}
           </div>
           <div className="text-xs text-stone-500 mt-0.5">
             Position: {object.position_m?.toFixed(2) ?? '—'} m along survey

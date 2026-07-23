@@ -17,7 +17,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { knnSearch, predictMaterial, predictElements } from '../models/knn';
+import { knnSearch, predictMaterial, predictElements, MIN_SAMPLES_PER_CLASS } from '../models/knn';
 import { trainClassifier, predictClassifier } from '../models/svmModel';
 import ConfidenceBar   from '../components/ConfidenceBar';
 import ResultCard      from '../components/ResultCard';
@@ -220,6 +220,14 @@ export default function Classify() {
         const xrf_elements =
           elemPred.fromMatches > 0 ? elemPred.elements : (matches[0]?.record?.xrf_elements ?? null);
 
+        // Data-sufficiency check — is the FINAL label (whichever method won:
+        // knn / classifier / ensemble) actually backed by enough confirmed DB
+        // records to trust, or is this a lucky/thin match? predictMaterial()
+        // already computes this internally but only against knnPred's own
+        // label; recompute against finalLabel since that's what's shown.
+        const classSampleCount = dbRecords.filter((r) => r.xrf_material === finalLabel).length;
+        const insufficientData = classSampleCount < MIN_SAMPLES_PER_CLASS;
+
         classified.push({
           ...det,
           label:       finalLabel,
@@ -229,6 +237,8 @@ export default function Classify() {
           top_matches: topMatches,
           xrf_elements,
           db_match_count: matches.length,
+          insufficientData,
+          classSampleCount,
         });
       }
 
