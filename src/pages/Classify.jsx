@@ -17,7 +17,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { knnSearch, predictMaterial, predictElements, MIN_SAMPLES_PER_CLASS } from '../models/knn';
+import { knnSearch, predictMaterial, predictElements, MIN_SAMPLES_PER_CLASS, CANONICAL_MATERIALS } from '../models/knn';
 import { trainClassifier, predictClassifier } from '../models/svmModel';
 import ConfidenceBar   from '../components/ConfidenceBar';
 import ResultCard      from '../components/ResultCard';
@@ -159,12 +159,11 @@ export default function Classify() {
         setProgress(15);
         await new Promise((r) => setTimeout(r, 0));
         const trainType = classifier === 'ensemble' ? 'naiveBayes' : classifier;
-        const featureVecs = dbRecords
-          .filter((r) => r.gpr_signature?.length > 0)
-          .map((r) => new Float32Array(r.gpr_signature));
-        const labels = dbRecords
-          .filter((r) => r.gpr_signature?.length > 0)
-          .map((r) => r.material ?? 'unknown');
+        const trainableRows = dbRecords.filter(
+          (r) => r.gpr_signature?.length > 0 && CANONICAL_MATERIALS.includes(r.material)
+        );
+        const featureVecs = trainableRows.map((r) => new Float32Array(r.gpr_signature));
+        const labels = trainableRows.map((r) => r.material);
         if (featureVecs.length >= 2) {
           trainedModel = trainClassifier(trainType, featureVecs, labels);
         }
@@ -225,7 +224,7 @@ export default function Classify() {
         // records to trust, or is this a lucky/thin match? predictMaterial()
         // already computes this internally but only against knnPred's own
         // label; recompute against finalLabel since that's what's shown.
-        const classSampleCount = dbRecords.filter((r) => r.xrf_material === finalLabel).length;
+        const classSampleCount = dbRecords.filter((r) => r.material === finalLabel).length;
         const insufficientData = classSampleCount < MIN_SAMPLES_PER_CLASS;
 
         classified.push({

@@ -193,6 +193,15 @@ export function extractFeatures(matrix, apexSample, apexTrace, halfDepth = 20, h
 
 // ── k-NN search ───────────────────────────────────────────────────────────────
 
+// The only material labels the pipeline is designed to predict. Any DB row
+// whose material falls outside this set (null, empty string, a stray label
+// from manual entry, leftover unlabelled synthetic rows, etc.) is excluded
+// from k-NN scoring entirely — it must never be allowed to win a vote as a
+// pseudo-class called "unknown". "unknown" is ONLY a fallback returned when
+// there are zero canonical neighbours to compare against, never a class that
+// accumulates votes from real database rows.
+export const CANONICAL_MATERIALS = ['ceramic', 'metal', 'bone', 'stone', 'void'];
+
 /**
  * Search a database of GPR+XRF records for the k most similar to a query vector.
  *
@@ -209,6 +218,7 @@ export function knnSearch(queryVec, database, k = 5, metric = 'cosine') {
 
   const scored = database
     .filter((row) => Array.isArray(row.gpr_signature) && row.gpr_signature.length > 0)
+    .filter((row) => CANONICAL_MATERIALS.includes(row.material))
     .map((row) => {
       const sig = new Float32Array(row.gpr_signature);
       // Pad or trim to match query length
@@ -277,7 +287,7 @@ export function predictMaterial(matches, database = null) {
   let classSampleCount = null;
   let insufficientData = false;
   if (Array.isArray(database)) {
-    classSampleCount = database.filter((row) => row.xrf_material === bestMaterial).length;
+    classSampleCount = database.filter((row) => row.material === bestMaterial).length;
     insufficientData = classSampleCount < MIN_SAMPLES_PER_CLASS;
   }
 
