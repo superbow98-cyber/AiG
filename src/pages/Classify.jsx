@@ -19,10 +19,20 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { knnSearch, predictMaterial, predictElements } from '../models/knn';
 import { trainClassifier, predictClassifier } from '../models/svmModel';
-import ConfidenceBar  from '../components/ConfidenceBar';
-import ResultCard     from '../components/ResultCard';
-import ObjectMap      from '../components/ObjectMap';
-import StatusBar      from '../components/StatusBar';
+import ConfidenceBar   from '../components/ConfidenceBar';
+import ResultCard      from '../components/ResultCard';
+import ObjectMap       from '../components/ObjectMap';
+import StatusBar       from '../components/StatusBar';
+// §41 — Classify was the only stage in the pipeline (Detect, Detection Lab,
+// Results all do this) that never rendered the actual B-scan. It only showed
+// ObjectMap (an abstract top-down dot map) + text cards, so there was no way
+// to see WHERE on the real radargram image a material label came from. These
+// three are the exact same trio Detect.jsx uses to render B-scan + boxes.
+import BScanViewer      from '../components/BScanViewer';
+import DepthScale       from '../components/DepthScale';
+import HyperbolaOverlay from '../components/HyperbolaOverlay';
+import useResponsiveScanHeight from '../hooks/useResponsiveScanHeight';
+import { getMatrixRange } from '../utils/colormap';
 
 // ── Material colour map (shared with HyperbolaOverlay) ───────────────────────
 const MATERIAL_COLORS = {
@@ -83,6 +93,22 @@ export default function Classify() {
   const [results,       setResults]       = useState([]);
   const [error,         setError]         = useState(null);
   const [expandedId,    setExpandedId]    = useState(null);
+
+  // ── B-scan view state (§41 — same pattern as Detect.jsx) ──────────────────
+  const scanHeight = useResponsiveScanHeight(480);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [panOffset,  setPanOffset]  = useState({ x: 0, y: 0 });
+  const [zoom,       setZoom]       = useState(1);
+  const [colormap]   = useState('grey'); // grayscale-only — standard GPR B-scan display
+  const [hoverInfo,  setHoverInfo]  = useState(null);
+  const samples = metadata?.samples ?? matrix?.length ?? 0;
+  const traces  = metadata?.traces  ?? (matrix?.[0]?.length ?? 0);
+  const { min: minVal, max: maxVal } = matrix ? getMatrixRange(matrix) : { min: 0, max: 1 };
+  // Once classification runs, overlay the CLASSIFIED objects (material label
+  // + colour) instead of the plain pre-classification detections, so the
+  // B-scan visually answers "which material is where" — the actual thing
+  // this page computes but previously never showed on the scan itself.
+  const overlayDetections = results.length > 0 ? results : detections;
 
   // ── Load DB records on mount ──────────────────────────────────────────────
   useEffect(() => {
@@ -269,6 +295,68 @@ export default function Classify() {
 
       {/* Status bar */}
       <StatusBar step={statusMsg} progress={progress} visible={running || progress === 100} />
+
+      {/* B-scan + material overlay (§41) — shows WHERE each classified
+          material sits on the real radargram, not just a text card. Boxes
+          are unlabeled/neutral (Detect.jsx's raw target/noise) until
+          classification runs, then flip to material colour + label the
+          moment `results` populates — same box component Detect.jsx and
+          DetectionLab.jsx already use, so styling stays consistent across
+          every stage of the pipeline. */}
+      {matrix && metadata && (
+        <div className="bg-white border border-[#F0E9B8] rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-stone-600">
+              B-scan{results.length > 0 ? ' — classified by material' : ' (run classification to label)'}
+            </span>
+            <span className="text-xs text-stone-400 bg-[#F7F3D0] border border-[#E8DFA0] rounded px-2 py-1">
+              grayscale · amplitude
+            </span>
+          </div>
+
+          <div className="relative flex">
+            <DepthScale
+              samples={samples}
+              dt_ns={metadata.dt_ns}
+              velocity={velocity}
+              height_px={scanHeight}
+            />
+            <div className="relative flex-1 min-w-0">
+              <BScanViewer
+                matrix={matrix}
+                colormap={colormap}
+                minVal={minVal}
+                maxVal={maxVal}
+                height={scanHeight}
+                velocity={velocity}
+                dt_ns={metadata.dt_ns}
+                onPixelHover={setHoverInfo}
+                onViewChange={({ panOffset: po, zoom: z, canvasWidth: cw, canvasHeight: ch }) => {
+                  setPanOffset(po);
+                  setZoom(z);
+                  setCanvasSize({ width: cw, height: ch });
+                }}
+              />
+              <HyperbolaOverlay
+                detections={overlayDetections}
+                canvasWidth={canvasSize.width}
+                canvasHeight={canvasSize.height}
+                totalTraces={traces}
+                totalSamples={samples}
+                panOffset={panOffset}
+                zoom={zoom}
+              />
+            </div>
+          </div>
+
+          {hoverInfo && (
+            <div className="text-xs text-stone-500 font-mono">
+              Trace {hoverInfo.trace} · Sample {hoverInfo.sample} ·
+              Depth {hoverInfo.depth_m?.toFixed(3)}m · Amp {hoverInfo.amplitude?.toFixed(1)}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* DB status banner */}
       <div className={`rounded-lg px-4 py-3 text-sm flex items-center gap-3 border
