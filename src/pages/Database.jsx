@@ -707,6 +707,9 @@ export default function Database() {
               case-insensitively (e.g. <code>material</code> or <code>xrf_material</code> both work).
               Required column: <strong>material</strong> (must be one of {MATERIALS.join(', ')}).
               <code>depth_m</code> is required unless <code>record_type</code> is <code>xrf_only</code>.
+              Optional <code>gpr_signature</code> column (an 18-value feature vector, JSON array or
+              semicolon-separated) makes a row actually matchable by the k-NN/classifier — rows
+              without it still import fine, they just won't be usable as prediction neighbours.
             </p>
             <button
               onClick={handleDownloadTemplate}
@@ -757,6 +760,7 @@ export default function Database() {
                       <th className="px-3 py-2 text-left">Site</th>
                       <th className="px-3 py-2 text-left">Material</th>
                       <th className="px-3 py-2 text-left">Depth</th>
+                      <th className="px-3 py-2 text-left" title="Whether this row has a gpr_signature feature vector — only rows with one can ever be matched by knnSearch, not just counted">Signature</th>
                       <th className="px-3 py-2 text-left">Status</th>
                     </tr>
                   </thead>
@@ -767,6 +771,11 @@ export default function Database() {
                         <td className="px-3 py-1.5 text-stone-600">{r.row?.site_id ?? '—'}</td>
                         <td className="px-3 py-1.5 text-stone-800 capitalize">{r.row?.xrf_material ?? '—'}</td>
                         <td className="px-3 py-1.5 text-stone-600">{r.row?.depth_m ?? '—'}</td>
+                        <td className="px-3 py-1.5">
+                          {r.row?.gpr_signature?.length
+                            ? <span className="text-[#C9971A]">✓ {r.row.gpr_signature.length}-dim</span>
+                            : <span className="text-stone-400">— none</span>}
+                        </td>
                         <td className="px-3 py-1.5">
                           {r.error
                             ? <span className="text-red-600">{r.error}</span>

@@ -5,6 +5,17 @@
 // "Add Record" entry, so a CSV built from that form's fields (or from the
 // downloadable template) round-trips cleanly.
 //
+// §40: bulk CSV import can now carry a real `gpr_signature` (the 18-value
+// feature vector knn.js's extractFeatures() produces — see CANONICAL ORDER
+// note on parseGprSignature below). Previously every CSV-imported row got
+// gpr_signature hardcoded to null, which meant knnSearch()'s
+// `Array.isArray(row.gpr_signature) && row.gpr_signature.length > 0` filter
+// silently excluded EVERY bulk-imported row from actually being matched —
+// they only ever padded classSampleCount (the low-sample badge's count),
+// never contributed a real neighbour. A CSV without this column still
+// imports fine (gpr_signature stays null, same as before — fully backward
+// compatible); rows that do have it are now real, matchable reference data.
+//
 // Consumed by: pages/Database.jsx
 
 import Papa from 'papaparse';
@@ -22,6 +33,7 @@ const COLUMN_ALIASES = {
   size_height_cm:  ['size_height_cm', 'height_cm', 'height'],
   xrf_material:    ['xrf_material', 'material'],
   xrf_elements:    ['xrf_elements', 'elements'],
+  gpr_signature:   ['gpr_signature', 'signature', 'feature_vector'],
   gps_lat:         ['gps_lat', 'lat', 'latitude'],
   gps_lng:         ['gps_lng', 'lng', 'lon', 'longitude'],
   excavation_date: ['excavation_date', 'date'],
@@ -55,6 +67,32 @@ function numOrNull(raw) {
   if (raw === undefined || raw === null || String(raw).trim() === '') return null;
   const n = parseFloat(raw);
   return Number.isFinite(n) ? n : null;
+}
+
+// Accepts either a JSON array ("[182.4,24.1,...]") or a semicolon/pipe
+// separated list ("182.4;24.1;..." — easier to type by hand than JSON, and
+// avoids clashing with the outer CSV comma delimiter without needing to
+// quote the cell). Returns null if empty/unparseable rather than throwing —
+// a bad signature should not fail the whole row, it should just fall back
+// to "not matchable by knnSearch," same as any other row missing it.
+// CANONICAL ORDER (must match knn.js's extractFeatures() — 18 values):
+//   [peak, mean, rms, std, skew, kurt, apexNormRow, apexNormCol, energy,
+//    zcr, curvature, leftSlope, rightSlope, widthHM, asymmetry,
+//    domFreqEst, decayRate, scr]
+function parseGprSignature(raw) {
+  if (!raw || !String(raw).trim()) return null;
+  const str = String(raw).trim();
+  try {
+    const arr = JSON.parse(str);
+    if (Array.isArray(arr) && arr.length && arr.every((v) => Number.isFinite(Number(v)))) {
+      return arr.map(Number);
+    }
+  } catch (_) {}
+  const parts = str
+    .split(/[;|]/)
+    .map((s) => parseFloat(s.trim()))
+    .filter((n) => !Number.isNaN(n));
+  return parts.length ? parts : null;
 }
 
 /**
@@ -132,7 +170,9 @@ export function parseRecordsCsv(csvText) {
       gps_lng:         numOrNull(get('gps_lng')),
       excavation_date: get('excavation_date') || null,
       notes:           get('notes') || null,
-      gpr_signature:   null, // bulk CSV import never carries a raw B-scan feature vector
+      // §40 — real feature vector when the CSV supplies one; null (same as
+      // before) when it doesn't, so old CSVs without this column still work.
+      gpr_signature:   parseGprSignature(get('gpr_signature')),
       is_synthetic:    parseBool(get('is_synthetic')),
     };
 
@@ -146,9 +186,9 @@ export function parseRecordsCsv(csvText) {
 /** Builds a starter CSV (headers + 3 example rows) for the "Download template" button. */
 export function buildTemplateCsv() {
   const example = [
-    { record_type: 'gpr_xrf', site_id: 'SB2A', scan_filename: 'SB2A_metal_001.dzt', depth_m: 1.1, size_width_cm: 18, size_height_cm: 20, xrf_material: 'metal', xrf_elements: 'Fe:55.2, Ti:1.1', gps_lat: 5.612, gps_lng: 100.398, excavation_date: '2024-06-12', notes: 'example row — replace with real data', is_synthetic: 'FALSE' },
-    { record_type: 'gpr_xrf', site_id: 'SB1B', scan_filename: 'SB1B_ceramic_002.dzt', depth_m: 0.8, size_width_cm: 22, size_height_cm: 16, xrf_material: 'ceramic', xrf_elements: 'Si:27.4, Al:11.2', gps_lat: 5.613, gps_lng: 100.397, excavation_date: '2024-06-13', notes: 'example row — replace with real data', is_synthetic: 'FALSE' },
-    { record_type: 'xrf_only', site_id: '', scan_filename: '', depth_m: '', size_width_cm: '', size_height_cm: '', xrf_material: 'bone', xrf_elements: 'Ca:31.0, P:14.2', gps_lat: '', gps_lng: '', excavation_date: '', notes: 'xrf_only rows skip depth/scan/size', is_synthetic: 'TRUE' },
+    { record_type: 'gpr_xrf', site_id: 'SB2A', scan_filename: 'SB2A_metal_001.dzt', depth_m: 1.1, size_width_cm: 18, size_height_cm: 20, xrf_material: 'metal', xrf_elements: 'Fe:55.2, Ti:1.1', gpr_signature: '[188.2,24.6,54.1,47.3,1.79,4.41,0.31,0.52,93400,0.16,0.84,0.74,0.76,6,0.05,8,0.16,11.8]', gps_lat: 5.612, gps_lng: 100.398, excavation_date: '2024-06-12', notes: 'example row — replace with real data', is_synthetic: 'FALSE' },
+    { record_type: 'gpr_xrf', site_id: 'SB1B', scan_filename: 'SB1B_ceramic_002.dzt', depth_m: 0.8, size_width_cm: 22, size_height_cm: 16, xrf_material: 'ceramic', xrf_elements: 'Si:27.4, Al:11.2', gpr_signature: '', gps_lat: 5.613, gps_lng: 100.397, excavation_date: '2024-06-13', notes: 'example row — replace with real data. gpr_signature left blank here on purpose: optional, only fill it in if you have a real 18-value feature vector (see knn.js extractFeatures order) — otherwise leave blank and the row still imports fine, just won'+"'"+'t be matchable by knnSearch.', is_synthetic: 'FALSE' },
+    { record_type: 'xrf_only', site_id: '', scan_filename: '', depth_m: '', size_width_cm: '', size_height_cm: '', xrf_material: 'bone', xrf_elements: 'Ca:31.0, P:14.2', gpr_signature: '', gps_lat: '', gps_lng: '', excavation_date: '', notes: 'xrf_only rows skip depth/scan/size/signature', is_synthetic: 'TRUE' },
   ];
   return Papa.unparse({ fields: TEMPLATE_HEADERS, data: example.map((r) => TEMPLATE_HEADERS.map((h) => r[h])) });
 }
