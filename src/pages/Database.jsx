@@ -76,7 +76,9 @@ export default function Database() {
   const [submitError, setSubmitError]= useState('');
 
   // §30 — Import CSV tab
-  const [csvFileName, setCsvFileName] = useState('');
+  const [csvFileNames, setCsvFileNames] = useState([]); // §41 — was csvFileName (single string)
+  const [csvOverflow,  setCsvOverflow]  = useState(0);  // §41 — count of files dropped past MAX_CSV_FILES
+  const [csvLoading,   setCsvLoading]   = useState(false); // §41 — reading/parsing multiple files is async now
   const [csvParsed,   setCsvParsed]   = useState(null);  // parseRecordsCsv() result
   const [csvImporting,setCsvImporting]= useState(false);
   const [csvResult,   setCsvResult]   = useState(null);  // { inserted, failed, dbError }
@@ -189,16 +191,56 @@ export default function Database() {
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // ── §41 — Import CSV: multi-file (up to MAX_CSV_FILES per selection) ───────
+  const MAX_CSV_FILES = 10;
+
   // ── §30 — Import CSV ──────────────────────────────────────────────────────
   function handleCsvFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const allFiles = Array.from(e.target.files || []);
+    if (!allFiles.length) return;
+
+    const files = allFiles.slice(0, MAX_CSV_FILES);
+    const overflow = allFiles.length - files.length;
+
     setCsvResult(null);
-    setCsvFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (ev) => setCsvParsed(parseRecordsCsv(ev.target.result));
-    reader.onerror = () => setCsvParsed({ rows: [], validCount: 0, invalidCount: 0, parseError: 'Could not read file.' });
-    reader.readAsText(file);
+    setCsvFileNames(files.map((f) => f.name));
+    setCsvOverflow(overflow > 0 ? overflow : 0);
+    setCsvLoading(true);
+
+    const readOne = (file) =>
+      new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve({ file, parsed: parseRecordsCsv(ev.target.result) });
+        reader.onerror = () =>
+          resolve({ file, parsed: { rows: [], validCount: 0, invalidCount: 0, parseError: 'Could not read file.' } });
+        reader.readAsText(file);
+      });
+
+    Promise.all(files.map(readOne)).then((results) => {
+      // Tag every row with which file it came from, so the preview table (and
+      // any "line 5" collisions across two different files) stay disambiguated.
+      const rows = [];
+      let validCount = 0, invalidCount = 0;
+      const perFileErrors = [];
+
+      for (const { file, parsed } of results) {
+        if (parsed.parseError) {
+          perFileErrors.push(`${file.name}: ${parsed.parseError}`);
+          continue; // this file contributed 0 rows, but doesn't block the others
+        }
+        for (const r of parsed.rows) rows.push({ ...r, sourceFile: file.name });
+        validCount += parsed.validCount;
+        invalidCount += parsed.invalidCount;
+      }
+
+      // Only a hard-blocking parseError if literally every file failed to parse.
+      const parseError = rows.length === 0 && perFileErrors.length === results.length
+        ? perFileErrors.join(' · ')
+        : null;
+
+      setCsvParsed({ rows, validCount, invalidCount, parseError, perFileErrors });
+      setCsvLoading(false);
+    });
   }
 
   function handleDownloadTemplate() {
@@ -221,7 +263,8 @@ export default function Database() {
       if (error) throw error;
       setCsvResult({ inserted: data?.length ?? validRows.length, failed: csvParsed.invalidCount, dbError: null });
       setCsvParsed(null);
-      setCsvFileName('');
+      setCsvFileNames([]);
+      setCsvOverflow(0);
       fetchRecords();
       fetchCounts();
     } catch (e) {
@@ -710,6 +753,8 @@ export default function Database() {
               Optional <code>gpr_signature</code> column (an 18-value feature vector, JSON array or
               semicolon-separated) makes a row actually matchable by the k-NN/classifier — rows
               without it still import fine, they just won't be usable as prediction neighbours.
+              You can select up to {MAX_CSV_FILES} CSV files at once — their rows are merged into a
+              single preview before import.
             </p>
             <button
               onClick={handleDownloadTemplate}
@@ -720,22 +765,42 @@ export default function Database() {
             </button>
           </div>
 
-          {/* File picker */}
+          {/* File picker — §41: now accepts up to MAX_CSV_FILES at once */}
           <div>
-            <label className="text-xs text-stone-500 block mb-1">CSV file</label>
+            <label className="text-xs text-stone-500 block mb-1">
+              CSV file{MAX_CSV_FILES > 1 ? 's' : ''} (max {MAX_CSV_FILES})
+            </label>
             <input
               type="file"
               accept=".csv,text/csv"
+              multiple
               onChange={handleCsvFile}
               className="w-full bg-[#F7F3D0] border border-[#E8DFA0] text-stone-700 text-sm
                          rounded-lg px-3 py-2 file:mr-3 file:py-1 file:px-3 file:rounded-md
                          file:border-0 file:bg-[#C9971A] file:text-white file:text-xs
                          file:font-semibold file:cursor-pointer cursor-pointer"
             />
-            {csvFileName && <p className="text-xs text-stone-400 mt-1">Loaded: {csvFileName}</p>}
+            {csvLoading && <p className="text-xs text-stone-400 mt-1">Reading {csvFileNames.length} file{csvFileNames.length !== 1 ? 's' : ''}…</p>}
+            {!csvLoading && csvFileNames.length > 0 && (
+              <p className="text-xs text-stone-400 mt-1">
+                Loaded {csvFileNames.length} file{csvFileNames.length !== 1 ? 's' : ''}: {csvFileNames.join(', ')}
+              </p>
+            )}
+            {csvOverflow > 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                {csvOverflow} file{csvOverflow !== 1 ? 's' : ''} past the {MAX_CSV_FILES}-file limit were ignored — import them in a second batch.
+              </p>
+            )}
           </div>
 
-          {/* Parse error (whole file rejected — e.g. no material column) */}
+          {/* Per-file parse errors — §41: one bad file no longer blocks the others */}
+          {csvParsed?.perFileErrors?.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-700 text-sm space-y-1">
+              {csvParsed.perFileErrors.map((msg, i) => <p key={i}>{msg}</p>)}
+            </div>
+          )}
+
+          {/* Parse error (every selected file rejected — e.g. no material column in any of them) */}
           {csvParsed?.parseError && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
               {csvParsed.parseError}
@@ -756,6 +821,7 @@ export default function Database() {
                 <table className="w-full text-xs">
                   <thead className="bg-[#F0E9B8] text-stone-500 uppercase tracking-wide sticky top-0">
                     <tr>
+                      <th className="px-3 py-2 text-left">File</th>
                       <th className="px-3 py-2 text-left">Line</th>
                       <th className="px-3 py-2 text-left">Site</th>
                       <th className="px-3 py-2 text-left">Material</th>
@@ -765,8 +831,9 @@ export default function Database() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F0E9B8]">
-                    {csvParsed.rows.map((r) => (
-                      <tr key={r.line}>
+                    {csvParsed.rows.map((r, i) => (
+                      <tr key={`${r.sourceFile ?? 'file'}-${r.line}-${i}`}>
+                        <td className="px-3 py-1.5 text-stone-400 font-mono max-w-[10rem] truncate" title={r.sourceFile}>{r.sourceFile ?? '—'}</td>
                         <td className="px-3 py-1.5 text-stone-400 font-mono">{r.line}</td>
                         <td className="px-3 py-1.5 text-stone-600">{r.row?.site_id ?? '—'}</td>
                         <td className="px-3 py-1.5 text-stone-800 capitalize">{r.row?.xrf_material ?? '—'}</td>
