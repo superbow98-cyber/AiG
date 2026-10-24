@@ -20,7 +20,7 @@
 
 import Papa from 'papaparse';
 
-export const MATERIALS = ['ceramic', 'metal', 'bone', 'stone', 'void', 'other'];
+export const MATERIALS = ['ceramic', 'metal', 'bone', 'lithic', 'soil', 'void', 'other'];
 export const RECORD_TYPES = ['gpr_xrf', 'xrf_only', 'gpr_only'];
 
 // Canonical column -> accepted header aliases (case-insensitive match).
