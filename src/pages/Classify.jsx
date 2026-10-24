@@ -37,7 +37,7 @@ import { getMatrixRange } from '../utils/colormap';
 // ── Material colour map (shared with HyperbolaOverlay) ───────────────────────
 const MATERIAL_COLORS = {
   ceramic: '#34d399', metal: '#f87171', bone: '#fbbf24',
-  stone: '#a78bfa',   void: '#38bdf8',  unknown: '#94a3b8',
+  lithic: '#a78bfa',  soil: '#a16207',  void: '#38bdf8',  unknown: '#94a3b8',
 };
 function matColor(label) {
   return MATERIAL_COLORS[label?.toLowerCase()] ?? MATERIAL_COLORS.unknown;
