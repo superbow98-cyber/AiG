@@ -200,7 +200,7 @@ export function extractFeatures(matrix, apexSample, apexTrace, halfDepth = 20, h
 // pseudo-class called "unknown". "unknown" is ONLY a fallback returned when
 // there are zero canonical neighbours to compare against, never a class that
 // accumulates votes from real database rows.
-export const CANONICAL_MATERIALS = ['ceramic', 'metal', 'bone', 'stone', 'void'];
+export const CANONICAL_MATERIALS = ['ceramic', 'metal', 'bone', 'lithic', 'soil', 'void'];
 
 /**
  * Search a database of GPR+XRF records for the k most similar to a query vector.
