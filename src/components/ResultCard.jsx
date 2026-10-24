@@ -5,7 +5,8 @@ const MATERIAL_COLORS = {
   ceramic: '#34d399',
   metal:   '#f87171',
   bone:    '#fbbf24',
-  stone:   '#a78bfa',
+  lithic:  '#a78bfa',
+  soil:    '#a16207',
   void:    '#38bdf8',
   unknown: '#94a3b8',
 }
