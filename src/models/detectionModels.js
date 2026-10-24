@@ -20,7 +20,7 @@
 
 import { sampleToDepth } from '../utils/depthCalc';
 
-export const DETECTOR_CLASSES = ['metal', 'ceramic', 'stone', 'void'];
+export const DETECTOR_CLASSES = ['metal', 'ceramic', 'lithic', 'void'];
 
 export const DETECTOR_METHODS = [
   {
