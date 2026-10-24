@@ -37,7 +37,7 @@ import {
 import { useScanWorkspace } from '../context/ScanWorkspaceContext';
 
 const MATERIAL_COLORS = {
-  ceramic: '#34d399', metal: '#f87171', stone: '#a78bfa', void: '#38bdf8', unknown: '#94a3b8',
+  ceramic: '#34d399', metal: '#f87171', lithic: '#a78bfa', void: '#38bdf8', unknown: '#94a3b8',
 };
 
 function MaskChip({ mask, size = 8, color }) {
