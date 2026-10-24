@@ -148,12 +148,21 @@ const MATERIAL_RULES = [
     ),
   },
   {
-    label: 'stone',
+    label: 'lithic',
     // Medium–high amplitude, sharp hyperbola
     fn: (f) => fuzzyAnd(
       triangular(f[2] ?? 0, 0.5, 0.7,  0.95),
       triangular(f[3] ?? 0, 5,   12,   25),
       triangular(f[5] ?? 0, 0.4, 0.6,  0.85)
+    ),
+  },
+  {
+    label: 'soil',
+    // Low amplitude, very wide/diffuse, low energy (background-like)
+    fn: (f) => fuzzyAnd(
+      triangular(f[2] ?? 0, 0,  0.1, 0.35),
+      triangular(f[3] ?? 0, 30, 55,  90),
+      triangular(f[5] ?? 0, 0,  0.1, 0.35)
     ),
   },
   {
@@ -186,7 +195,7 @@ export function classifyMaterialFuzzy(features) {
     scores,
     dominantMaterial: dominant[0],
     dominantScore:    dominant[1],
-    hedged,           // e.g. ["possibly stone", "possibly ceramic"]
+    hedged,           // e.g. ["possibly lithic", "possibly ceramic"]
     label: dominant[0],
     confidence: dominant[1],
   };
