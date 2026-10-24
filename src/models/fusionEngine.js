@@ -24,7 +24,7 @@
 // output size from MATERIAL_CLASSES.length automatically (weights are
 // untrained/seeded, no saved weight file to break), so widening this to
 // 5 classes needs no other change in this file.
-export const MATERIAL_CLASSES = ['ceramic', 'metal', 'bone', 'stone', 'void'];
+export const MATERIAL_CLASSES = ['ceramic', 'metal', 'bone', 'lithic', 'soil', 'void'];
 
 function mulberry32(seed) {
   let a = seed >>> 0;
