@@ -17,7 +17,8 @@ const MATERIAL_COLORS = {
   ceramic: '#34d399',   // emerald
   metal:   '#f87171',   // red
   bone:    '#fbbf24',   // amber
-  stone:   '#a78bfa',   // violet
+  lithic:  '#a78bfa',   // violet
+  soil:    '#a16207',   // brown
   void:    '#38bdf8',   // sky
   unknown: '#94a3b8',   // slate
 };
