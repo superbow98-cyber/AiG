@@ -65,7 +65,7 @@ export const UNET_TILE_SIZE = 256
 export const CNN_PATCH_SIZE = 64
 
 /** Material labels — must match training label order. */
-export const DL_MATERIAL_LABELS = ['metal', 'ceramic', 'bone', 'stone', 'void', 'unknown']
+export const DL_MATERIAL_LABELS = ['metal', 'ceramic', 'bone', 'lithic', 'soil', 'void', 'unknown']
 
 /** Default model paths (relative to /public/). */
 export const DEFAULT_MODEL_PATHS = {
