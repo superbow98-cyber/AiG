@@ -26,11 +26,14 @@ const DEMO_PAIRS = [
   { actual: 'ceramic', predicted: 'metal',   confidence: 0.61 },
   // metal (7)
   ...Array(6).fill( { actual: 'metal',   predicted: 'metal',   confidence: 0.86 }),
-  { actual: 'metal',   predicted: 'stone',   confidence: 0.63 },
-  // stone (9)
-  ...Array(2).fill( { actual: 'stone',   predicted: 'metal',   confidence: 0.58 }),
-  ...Array(6).fill( { actual: 'stone',   predicted: 'stone',   confidence: 0.79 }),
-  { actual: 'stone',   predicted: 'void',    confidence: 0.54 },
+  { actual: 'metal',   predicted: 'lithic',  confidence: 0.63 },
+  // lithic (9)
+  ...Array(2).fill( { actual: 'lithic',  predicted: 'metal',   confidence: 0.58 }),
+  ...Array(6).fill( { actual: 'lithic',  predicted: 'lithic',  confidence: 0.79 }),
+  { actual: 'lithic',  predicted: 'void',    confidence: 0.54 },
+  // soil (6)
+  ...Array(5).fill( { actual: 'soil',    predicted: 'soil',    confidence: 0.84 }),
+  { actual: 'soil',    predicted: 'bone',    confidence: 0.49 },
   // void (7)
   { actual: 'void',    predicted: 'ceramic', confidence: 0.51 },
   ...Array(6).fill( { actual: 'void',    predicted: 'void',    confidence: 0.87 }),
