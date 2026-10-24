@@ -15,7 +15,7 @@ import { parseRecordsCsv, buildTemplateCsv } from '../utils/recordsCsv';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MATERIALS = ['ceramic', 'metal', 'bone', 'stone', 'void', 'other'];
+const MATERIALS = ['ceramic', 'metal', 'bone', 'lithic', 'soil', 'void', 'other'];
 const PAGE_SIZE = 20;
 const RECORD_TYPES = ['gpr_xrf', 'xrf_only', 'gpr_only'];
 const MIN_VERIFIED_RECOMMENDED = 15; // per-material threshold used in KNN sufficiency check
